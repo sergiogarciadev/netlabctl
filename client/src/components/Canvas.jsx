@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
-export function Canvas({ nodes, wires, onSelectNode }) {
+export function Canvas({ _nodes, _wires, _onSelectNode }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {

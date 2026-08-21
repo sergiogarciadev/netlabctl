@@ -1,13 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Toolbar } from './components/Toolbar';
-import { Canvas } from './components/Canvas';
-import { Sidebar } from './components/Sidebar';
-import { TerminalWindow } from './components/TerminalWindow';
-import { fetchTemplates, fetchProjects, WSClient } from './services/api';
+import { useEffect, useRef, useState } from "react";
+import { Canvas } from "./components/Canvas";
+import { Sidebar } from "./components/Sidebar";
+import { TerminalWindow } from "./components/TerminalWindow";
+import { Toolbar } from "./components/Toolbar";
+import { fetchTemplates, WSClient } from "./services/api";
 
 export function App() {
   const [templates, setTemplates] = useState([]);
-  const [project, setProject] = useState({ id: 'default', name: 'Sample Network Lab', nodes: [], wires: [] });
+  const [project, setProject] = useState({
+    id: "default",
+    name: "Sample Network Lab",
+    nodes: [],
+    wires: [],
+  });
   const [selectedNode, setSelectedNode] = useState(null);
   const [activeTerminalNode, setActiveTerminalNode] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -17,11 +22,11 @@ export function App() {
     // Load initial machine templates
     fetchTemplates()
       .then(setTemplates)
-      .catch((err) => console.error('Failed to load templates:', err));
+      .catch((err) => console.error("Failed to load templates:", err));
 
     // Connect WebSocket
     const ws = new WSClient((msg) => {
-      if (msg.type === 'project_state') {
+      if (msg.type === "project_state") {
         setProject(msg.data);
       }
     });
