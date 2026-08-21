@@ -1,0 +1,18 @@
+# Go binaries
+/netlabctl
+/bin/
+
+# Node dependencies & builds
+node_modules/
+dist/
+.vite/
+
+# Application state (for testing locally)
+.netlabctl_dev/
+
+# OS / Editor files
+.DS_Store
+*.swp
+*.tmp
+.idea/
+.vscode/

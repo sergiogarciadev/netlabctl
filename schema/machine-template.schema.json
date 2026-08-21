@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MachineTemplate",
+  "description": "JSON schema for netlabctl machine templates",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "description",
+    "drawing",
+    "system",
+    "memory",
+    "smp",
+    "ports",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Machine template identifier (matches template directory name)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name of the machine template"
+    },
+    "description": {
+      "type": "string",
+      "description": "Markdown description of the device template"
+    },
+    "drawing": {
+      "type": "string",
+      "description": "Filename of the SVG icon/drawing in the template folder"
+    },
+    "system": {
+      "type": "string",
+      "description": "QEMU system emulator executable (e.g. qemu-system-x86_64)"
+    },
+    "memory": {
+      "type": "integer",
+      "minimum": 64,
+      "description": "RAM size in MB"
+    },
+    "smp": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of CPU cores"
+    },
+    "cpu": {
+      "type": "string",
+      "description": "Optional QEMU CPU model"
+    },
+    "userdata": {
+      "type": "string",
+      "description": "Optional userdata script template using ${{{ model.var }}} substitution"
+    },
+    "metadata": {
+      "type": "string",
+      "description": "Optional metadata script template using ${{{ model.var }}} substitution"
+    },
+    "ports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "type"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "SVG element ID representing the port anchor"
+          },
+          "name": {
+            "type": "string",
+            "description": "Port interface name (e.g. eth0)"
+          },
+          "type": {
+            "type": "string",
+            "description": "Network type (managed, user, tap, socket, etc.)"
+          },
+          "netdev": {
+            "type": "string",
+            "description": "Optional extra parameters for QEMU netdev"
+          },
+          "device": {
+            "type": "string",
+            "description": "Optional extra parameters for QEMU device"
+          }
+        }
+      }
+    },
+    "status": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "SVG element ID representing the status text or indicator"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["name", "power"],
+            "description": "Type of status element (name or power)"
+          }
+        }
+      }
+    },
+    "qemu": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Extra command line parameters passed directly to QEMU"
+    }
+  }
+}

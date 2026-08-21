@@ -1,0 +1,218 @@
+:root {
+  --bg-dark: #090d16;
+  --bg-card: #131b2e;
+  --bg-card-hover: #1c2845;
+  --border-color: #1e293b;
+  --border-highlight: #334155;
+  --accent-primary: #3b82f6;
+  --accent-success: #10b981;
+  --accent-warning: #f59e0b;
+  --accent-danger: #ef4444;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body, html, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* App Container Layout */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+}
+
+/* Top Toolbar */
+.toolbar {
+  height: 52px;
+  background: rgba(19, 27, 46, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 10;
+}
+
+.toolbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+}
+
+.toolbar-brand span {
+  background: linear-gradient(135deg, #3b82f6, #06b6d4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.toolbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  border: 1px solid transparent;
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+}
+
+.btn:hover {
+  background: #253356;
+  border-color: var(--border-highlight);
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+}
+
+.btn-success {
+  background: var(--accent-success);
+  color: #ffffff;
+}
+
+.btn-success:hover {
+  background: #059669;
+}
+
+.btn-danger {
+  background: var(--accent-danger);
+  color: #ffffff;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+/* Canvas Area */
+.main-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.canvas-wrapper {
+  width: 100%;
+  height: 100%;
+  background-image: 
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+/* Sidebar Drawer */
+.sidebar {
+  position: absolute;
+  top: 52px;
+  right: 0;
+  width: 340px;
+  height: calc(100vh - 52px);
+  background: rgba(19, 27, 46, 0.95);
+  backdrop-filter: blur(16px);
+  border-left: 1px solid var(--border-color);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  z-index: 20;
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sidebar.open {
+  transform: translateX(0);
+}
+
+/* Terminal Drawer */
+.terminal-modal {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 320px;
+  background: #090d16;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  z-index: 30;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.7);
+}
+
+.terminal-header {
+  height: 36px;
+  background: #131b2e;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.terminal-body {
+  flex: 1;
+  padding: 8px;
+  background: #000000;
+}
+
+/* Status & Port Required CSS Classes */
+.port.connected {
+  fill: #10b981 !important;
+}
+
+.port.disconnected {
+  fill: #64748b !important;
+}
+
+.port.user {
+  fill: #3b82f6 !important;
+}
+
+.port.qemu {
+  fill: #8b5cf6 !important;
+}
+
+.power-status.on {
+  fill: #10b981 !important;
+  filter: drop-shadow(0 0 6px #10b981);
+}
+
+.power-status.off {
+  fill: #ef4444 !important;
+}
