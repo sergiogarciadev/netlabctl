@@ -4,6 +4,8 @@ import {
   Network,
   Play,
   Plus,
+  RotateCcw,
+  RotateCw,
   Square,
   Terminal as TerminalIcon,
 } from "lucide-react";
@@ -13,6 +15,10 @@ export function Toolbar({
   isRunning,
   activeTool,
   onSelectTool,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onStart,
   onStop,
   onAddDevice,
@@ -29,35 +35,69 @@ export function Toolbar({
         </span>
       </div>
 
-      <div
-        className="toolbar-tools"
-        style={{
-          display: "flex",
-          gap: "4px",
-          background: "var(--bg-card)",
-          padding: "3px",
-          borderRadius: "8px",
-          border: "1px solid var(--border-color)",
-        }}
-      >
-        <button
-          type="button"
-          className={`btn ${activeTool === "select" ? "btn-primary" : ""}`}
-          style={{ padding: "4px 10px", fontSize: "0.8rem" }}
-          onClick={() => onSelectTool("select")}
-          title="Select Mode (Pointer & Drag)"
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div
+          className="toolbar-tools"
+          style={{
+            display: "flex",
+            gap: "4px",
+            background: "var(--bg-card)",
+            padding: "3px",
+            borderRadius: "8px",
+            border: "1px solid var(--border-color)",
+          }}
         >
-          <MousePointer size={14} /> Select
-        </button>
-        <button
-          type="button"
-          className={`btn ${activeTool === "wire" ? "btn-primary" : ""}`}
-          style={{ padding: "4px 10px", fontSize: "0.8rem" }}
-          onClick={() => onSelectTool("wire")}
-          title="Wire Mode (Connect Ports)"
+          <button
+            type="button"
+            className={`btn ${activeTool === "select" ? "btn-primary" : ""}`}
+            style={{ padding: "4px 10px", fontSize: "0.8rem" }}
+            onClick={() => onSelectTool("select")}
+            title="Select Mode (Inspect & Move Devices)"
+          >
+            <MousePointer size={14} /> Select
+          </button>
+          <button
+            type="button"
+            className={`btn ${activeTool === "wire" ? "btn-primary" : ""}`}
+            style={{ padding: "4px 10px", fontSize: "0.8rem" }}
+            onClick={() => onSelectTool("wire")}
+            title="Wire Mode (Connect Ports Only)"
+          >
+            <Cable size={14} /> Wire
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "4px",
+            background: "var(--bg-card)",
+            padding: "3px",
+            borderRadius: "8px",
+            border: "1px solid var(--border-color)",
+          }}
         >
-          <Cable size={14} /> Wire
-        </button>
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: "4px 8px", opacity: canUndo ? 1 : 0.4 }}
+            disabled={!canUndo}
+            onClick={onUndo}
+            title="Undo (Ctrl+Z)"
+          >
+            <RotateCcw size={14} />
+          </button>
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: "4px 8px", opacity: canRedo ? 1 : 0.4 }}
+            disabled={!canRedo}
+            onClick={onRedo}
+            title="Redo (Ctrl+Y)"
+          >
+            <RotateCw size={14} />
+          </button>
+        </div>
       </div>
 
       <div className="toolbar-controls">

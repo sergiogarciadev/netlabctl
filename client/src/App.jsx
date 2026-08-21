@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AddDeviceModal } from "./components/AddDeviceModal";
 import { Canvas } from "./components/Canvas";
 import { Sidebar } from "./components/Sidebar";
@@ -24,18 +24,95 @@ export function App() {
   const [activeTerminalNode, setActiveTerminalNode] = useState(null);
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
-  const [activeTool, setActiveTool] = useState("select"); // "select" or "wire"
+  const [activeTool, setActiveTool] = useState("select");
+
+  // History State Stack for Undo / Redo
+  const historyRef = useRef([]);
+  const historyIndexRef = useRef(-1);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
   const wsClientRef = useRef(null);
 
+  const updateHistoryButtons = useCallback(() => {
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+  }, []);
+
+  const pushStateToHistory = useCallback(
+    (newProject) => {
+      const clone = JSON.parse(JSON.stringify(newProject));
+      const nextHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
+      nextHistory.push(clone);
+      historyRef.current = nextHistory;
+      historyIndexRef.current = nextHistory.length - 1;
+      updateHistoryButtons();
+    },
+    [updateHistoryButtons],
+  );
+
+  const commitProjectUpdate = useCallback(
+    async (updatedProject, saveToHistory = true) => {
+      setProject(updatedProject);
+      if (saveToHistory) {
+        pushStateToHistory(updatedProject);
+      }
+      try {
+        await updateProject(updatedProject.id, updatedProject);
+      } catch (err) {
+        console.error("Failed to sync project update to server:", err);
+      }
+    },
+    [pushStateToHistory],
+  );
+
+  const handleUndo = useCallback(() => {
+    if (historyIndexRef.current > 0) {
+      historyIndexRef.current -= 1;
+      const prevProject = JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current]));
+      commitProjectUpdate(prevProject, false);
+      updateHistoryButtons();
+    }
+  }, [commitProjectUpdate, updateHistoryButtons]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      historyIndexRef.current += 1;
+      const nextProject = JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current]));
+      commitProjectUpdate(nextProject, false);
+      updateHistoryButtons();
+    }
+  }, [commitProjectUpdate, updateHistoryButtons]);
+
+  // Global Keyboard listener for Undo (Ctrl+Z) and Redo (Ctrl+Y / Ctrl+Shift+Z)
   useEffect(() => {
-    // Fetch machine templates
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        handleRedo();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleUndo, handleRedo]);
+
+  useEffect(() => {
     fetchTemplates()
       .then(setTemplates)
       .catch((err) => console.error("Failed to load templates:", err));
 
-    // Fetch initial project topology
     fetchProject("default")
-      .then((top) => setProject(top))
+      .then((top) => {
+        setProject(top);
+        historyRef.current = [JSON.parse(JSON.stringify(top))];
+        historyIndexRef.current = 0;
+        updateHistoryButtons();
+      })
       .catch(() => {
         const initTop = {
           id: "default",
@@ -43,10 +120,14 @@ export function App() {
           nodes: [],
           wires: [],
         };
-        updateProject("default", initTop).then(setProject);
+        updateProject("default", initTop).then((top) => {
+          setProject(top);
+          historyRef.current = [JSON.parse(JSON.stringify(top))];
+          historyIndexRef.current = 0;
+          updateHistoryButtons();
+        });
       });
 
-    // Connect WebSocket
     const ws = new WSClient((msg) => {
       if (msg.type === "project_state") {
         setProject(msg.data);
@@ -55,7 +136,7 @@ export function App() {
     ws.connect();
     ws.subscribeProject("default");
     wsClientRef.current = ws;
-  }, []);
+  }, [updateHistoryButtons]);
 
   const handleStartLab = () => {
     setIsRunning(true);
@@ -72,11 +153,10 @@ export function App() {
       const posX = 100 + (project.nodes?.length || 0) * 160;
       const posY = 150;
       const newNode = await addNodeToProject(project.id, tmpl.id, "", posX, posY);
+      const updatedNodes = [...(project.nodes || []), newNode];
+      const updatedProject = { ...project, nodes: updatedNodes };
 
-      setProject((prev) => ({
-        ...prev,
-        nodes: [...(prev.nodes || []), newNode],
-      }));
+      commitProjectUpdate(updatedProject, true);
       setSelectedNode(newNode);
     } catch (err) {
       console.error("Failed to add node from template:", err);
@@ -84,7 +164,6 @@ export function App() {
   };
 
   const handleAddWire = async (srcNodeId, srcPortId, dstNodeId, dstPortId) => {
-    // Rule: Each Port MUST HAVE only one connection to another Port.
     const isPortConnected = (nodeId, portId) => {
       return (project.wires || []).some(
         (w) =>
@@ -112,16 +191,13 @@ export function App() {
 
     const updatedWires = [...(project.wires || []), newWire];
     const updatedProject = { ...project, wires: updatedWires };
-
-    setProject(updatedProject);
-    await updateProject(project.id, updatedProject);
+    commitProjectUpdate(updatedProject, true);
   };
 
   const handleDeleteWire = async (wireId) => {
     const updatedWires = (project.wires || []).filter((w) => w.id !== wireId);
     const updatedProject = { ...project, wires: updatedWires };
-    setProject(updatedProject);
-    await updateProject(project.id, updatedProject);
+    commitProjectUpdate(updatedProject, true);
   };
 
   const handleUpdateNode = async (updatedNode) => {
@@ -129,9 +205,8 @@ export function App() {
       n.id === updatedNode.id ? updatedNode : n,
     );
     const updatedProject = { ...project, nodes: updatedNodes };
-    setProject(updatedProject);
     setSelectedNode(updatedNode);
-    await updateProject(project.id, updatedProject);
+    commitProjectUpdate(updatedProject, true);
   };
 
   const handleDeleteNode = async (nodeId) => {
@@ -140,9 +215,8 @@ export function App() {
       (w) => w.srcNodeId !== nodeId && w.dstNodeId !== nodeId,
     );
     const updatedProject = { ...project, nodes: updatedNodes, wires: updatedWires };
-    setProject(updatedProject);
     setSelectedNode(null);
-    await updateProject(project.id, updatedProject);
+    commitProjectUpdate(updatedProject, true);
   };
 
   return (
@@ -152,6 +226,10 @@ export function App() {
         isRunning={isRunning}
         activeTool={activeTool}
         onSelectTool={(tool) => setActiveTool(tool)}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         onStart={handleStartLab}
         onStop={handleStopLab}
         onAddDevice={() => setIsAddDeviceOpen(true)}

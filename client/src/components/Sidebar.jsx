@@ -143,7 +143,7 @@ export function Sidebar({
           className="btn btn-danger"
           onClick={() => onDeleteNode(selectedNode.id)}
         >
-          <Trash2 size={16} /> Delete Device
+          <Trash2 size={16} /> Remove Device
         </button>
       </div>
     </div>
