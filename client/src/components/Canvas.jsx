@@ -1,4 +1,4 @@
-import { Circle, Canvas as FabricCanvas, Group, Line, loadSVGFromString, Rect, Text } from "fabric";
+import { Canvas as FabricCanvas, Group, Line, loadSVGFromString, Rect } from "fabric";
 import { useCallback, useEffect, useRef } from "react";
 import { fetchTemplateDrawing } from "../services/api";
 
@@ -34,6 +34,7 @@ export function Canvas({ nodes, wires, templates, onSelectNode, onAddWire, onDel
       height,
       backgroundColor: "#090d16",
       selection: true,
+      subTargetCheck: true,
     });
 
     fabricCanvasRef.current = canvas;
@@ -48,14 +49,52 @@ export function Canvas({ nodes, wires, templates, onSelectNode, onAddWire, onDel
     };
     window.addEventListener("resize", handleResize);
 
-    // Cancel wiring on Escape or background click
+    // Click handler for nodes, ports, and wiring mode
     canvas.on("mouse:down", (opt) => {
-      if (!opt.target && wiringStateRef.current.active) {
-        cancelWiring();
-      } else if (opt.target?.isNodeGroup) {
-        onSelectNode(opt.target.nodeData);
-      } else if (!opt.target) {
+      const target = opt.target;
+      const subTarget = opt.subTarget;
+
+      // Check if user clicked directly on a port inside an SVG device group
+      if (target?.isNodeGroup && subTarget?.portId) {
+        opt.e.stopPropagation();
+        const portId = subTarget.portId;
+        const node = target.nodeData;
+        const portAbsPos = target.getPortAbsPosition(portId);
+
+        if (!wiringStateRef.current.active) {
+          // Start wire creation from this port
+          wiringStateRef.current = {
+            active: true,
+            srcNodeId: node.id,
+            srcPortId: portId,
+            tempLine: new Line([portAbsPos.x, portAbsPos.y, portAbsPos.x, portAbsPos.y], {
+              stroke: "#3b82f6",
+              strokeWidth: 3,
+              strokeDashArray: [6, 4],
+              selectable: false,
+              evented: false,
+            }),
+          };
+          canvas.add(wiringStateRef.current.tempLine);
+        } else {
+          // Complete wire connection to destination port
+          const { srcNodeId, srcPortId } = wiringStateRef.current;
+          if (srcNodeId !== node.id || srcPortId !== portId) {
+            onAddWire(srcNodeId, srcPortId, node.id, portId);
+          }
+          cancelWiring();
+        }
+        return;
+      }
+
+      // Select node on click
+      if (target?.isNodeGroup) {
+        onSelectNode(target.nodeData);
+      } else if (!target) {
         onSelectNode(null);
+        if (wiringStateRef.current.active) {
+          cancelWiring();
+        }
       }
     });
 
@@ -72,21 +111,20 @@ export function Canvas({ nodes, wires, templates, onSelectNode, onAddWire, onDel
       window.removeEventListener("resize", handleResize);
       canvas.dispose();
     };
-  }, [cancelWiring, onSelectNode]);
+  }, [cancelWiring, onSelectNode, onAddWire]);
 
-  // Render/Sync Nodes and Wires
+  // Render/Sync Nodes and Wires on Canvas
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
 
-    // Clear existing objects
     canvas.clear();
     canvas.backgroundColor = "#090d16";
 
-    const nodePositions = new Map(); // nodeId -> { x, y, ports: Map(portId -> { x, y }) }
+    const nodeGroupsMap = new Map();
 
-    // Async render nodes
     const renderAll = async () => {
+      // 1. Load and render each device node exact SVG
       for (const node of nodes) {
         const tmpl = templates.find((t) => t.id === node.templateId);
         let svgStr = "";
@@ -95,91 +133,28 @@ export function Canvas({ nodes, wires, templates, onSelectNode, onAddWire, onDel
             svgStr = await fetchTemplateDrawing(tmpl.id);
           }
         } catch (err) {
-          console.error("Failed to load SVG drawing:", err);
+          console.error(`Failed to load SVG for template ${node.templateId}:`, err);
         }
 
-        const nodeGroup = await createNodeFabricGroup(
-          node,
-          tmpl,
-          svgStr,
-          (portId, portAbsX, portAbsY) => {
-            // Handle Port Click for Wire Creation
-            if (!wiringStateRef.current.active) {
-              // Start wiring
-              wiringStateRef.current = {
-                active: true,
-                srcNodeId: node.id,
-                srcPortId: portId,
-                tempLine: new Line([portAbsX, portAbsY, portAbsX, portAbsY], {
-                  stroke: "#3b82f6",
-                  strokeWidth: 3,
-                  strokeDashArray: [6, 4],
-                  selectable: false,
-                  evented: false,
-                }),
-              };
-              canvas.add(wiringStateRef.current.tempLine);
-            } else {
-              // Complete wiring if destination port is different
-              const { srcNodeId, srcPortId } = wiringStateRef.current;
-              if (srcNodeId !== node.id || srcPortId !== portId) {
-                onAddWire(srcNodeId, srcPortId, node.id, portId);
-              }
-              cancelWiring();
-            }
-          },
-        );
+        const nodeGroup = await createExactSVGDeviceGroup(node, tmpl, svgStr, wires);
+        nodeGroup.on("moving", () => {
+          node.x = nodeGroup.left;
+          node.y = nodeGroup.top;
+          updateWirePositions(canvas, nodes, wires, nodeGroupsMap);
+        });
 
         canvas.add(nodeGroup);
-
-        // Store port positions for wire rendering
-        const portMap = new Map();
-        node.ports.forEach((p, idx) => {
-          const portOffsetY = 55;
-          const portOffsetX = 20 + idx * 25;
-          portMap.set(p.id, {
-            x: node.x + portOffsetX,
-            y: node.y + portOffsetY,
-          });
-        });
-
-        nodePositions.set(node.id, {
-          x: node.x,
-          y: node.y,
-          ports: portMap,
-        });
+        nodeGroupsMap.set(node.id, nodeGroup);
       }
 
-      // Render Wires
-      for (const wire of wires) {
-        const srcPos = nodePositions.get(wire.srcNodeId);
-        const dstPos = nodePositions.get(wire.dstNodeId);
-
-        if (srcPos && dstPos) {
-          const p1 = srcPos.ports.get(wire.srcPortId) || { x: srcPos.x + 20, y: srcPos.y + 40 };
-          const p2 = dstPos.ports.get(wire.dstPortId) || { x: dstPos.x + 20, y: dstPos.y + 40 };
-
-          const wireLine = new Line([p1.x, p1.y, p2.x, p2.y], {
-            stroke: "#10b981",
-            strokeWidth: 3,
-            selectable: true,
-            hasControls: false,
-          });
-          wireLine.wireData = wire;
-
-          wireLine.on("mousedblclick", () => {
-            if (onDeleteWire) onDeleteWire(wire.id);
-          });
-
-          canvas.add(wireLine);
-        }
-      }
+      // 2. Render Wires connecting exact port SVG locations
+      updateWirePositions(canvas, nodes, wires, nodeGroupsMap, onDeleteWire);
 
       canvas.requestRenderAll();
     };
 
     renderAll();
-  }, [nodes, wires, templates, cancelWiring, onAddWire, onDeleteWire]);
+  }, [nodes, wires, templates, onDeleteWire]);
 
   return (
     <div className="canvas-wrapper" ref={containerRef}>
@@ -188,26 +163,61 @@ export function Canvas({ nodes, wires, templates, onSelectNode, onAddWire, onDel
   );
 }
 
-// Helper to construct Fabric Group for a Node
-async function createNodeFabricGroup(node, tmpl, svgStr, onPortClick) {
-  const groupObjects = [];
+// Update Wire Lines on Canvas between exact SVG port anchor positions
+function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire) {
+  // Remove existing lines
+  const existingLines = canvas.getObjects("line").filter((obj) => obj.isWireLine);
+  for (const lineObj of existingLines) {
+    canvas.remove(lineObj);
+  }
+
+  for (const wire of wires) {
+    const srcGroup = nodeGroupsMap.get(wire.srcNodeId);
+    const dstGroup = nodeGroupsMap.get(wire.dstNodeId);
+
+    if (srcGroup && dstGroup) {
+      const p1 = srcGroup.getPortAbsPosition(wire.srcPortId);
+      const p2 = dstGroup.getPortAbsPosition(wire.dstPortId);
+
+      const wireLine = new Line([p1.x, p1.y, p2.x, p2.y], {
+        stroke: "#10b981",
+        strokeWidth: 3,
+        selectable: true,
+        hasControls: false,
+      });
+      wireLine.isWireLine = true;
+      wireLine.wireData = wire;
+
+      if (onDeleteWire) {
+        wireLine.on("mousedblclick", () => {
+          onDeleteWire(wire.id);
+        });
+      }
+
+      canvas.add(wireLine);
+      canvas.sendObjectToBack(wireLine);
+    }
+  }
+}
+
+// Parses exact SVG string from $HOME/.netlabctl/devices, applies node state to elements, and builds Fabric Group
+async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires) {
+  let svgObjects = [];
 
   if (svgStr) {
     try {
       const parsed = await loadSVGFromString(svgStr);
       if (parsed.objects && parsed.objects.length > 0) {
-        parsed.objects.forEach((obj) => {
-          groupObjects.push(obj);
-        });
+        svgObjects = parsed.objects.filter((o) => o !== null);
       }
     } catch (e) {
-      console.warn("Error parsing SVG string:", e);
+      console.warn("Failed to parse exact device SVG:", e);
     }
   }
 
-  // Fallback box if SVG parse failed or empty
-  if (groupObjects.length === 0) {
-    const rect = new Rect({
+  // Fallback if SVG missing
+  if (svgObjects.length === 0) {
+    const fallbackBox = new Rect({
       width: 120,
       height: 80,
       fill: "#1e293b",
@@ -216,61 +226,107 @@ async function createNodeFabricGroup(node, tmpl, svgStr, onPortClick) {
       rx: 8,
       ry: 8,
     });
-    groupObjects.push(rect);
+    svgObjects.push(fallbackBox);
   }
 
-  // Title Text
-  const titleText = new Text(node.name, {
-    fontSize: 12,
-    fontWeight: "bold",
-    fill: "#f8fafc",
-    left: 10,
-    top: 10,
-  });
-  groupObjects.push(titleText);
+  // Process and style SVG elements according to netlabctl rules
+  const processElement = (obj) => {
+    const elemId = obj.id || "";
 
-  // Power Status Indicator
-  const powerStatus = new Circle({
-    radius: 4,
-    fill: "#ef4444", // off by default
-    left: 100,
-    top: 12,
-  });
-  groupObjects.push(powerStatus);
+    // 1. Name Status Text: update text content to machine name
+    if (elemId === "status-name" || elemId.includes("name")) {
+      if (typeof obj.set === "function") {
+        obj.set({ text: node.name });
+      }
+    }
 
-  // Ports
-  const ports = node.ports || tmpl?.ports || [];
-  ports.forEach((port, idx) => {
-    const portOffsetX = 20 + idx * 25;
-    const portOffsetY = 55;
+    // 2. Power Status Circle/Indicator: apply .on / .off styling
+    if (elemId === "status-power" || elemId.includes("power")) {
+      const isPoweredOn = node.isPoweredOn || false; // default off in canvas design
+      const powerColor = isPoweredOn ? "#10b981" : "#ef4444";
+      if (typeof obj.set === "function") {
+        obj.set({ fill: powerColor });
+      }
+    }
 
-    const portCircle = new Circle({
-      radius: 5,
-      fill: "#64748b", // disconnected by default
-      stroke: "#0f172a",
-      strokeWidth: 1.5,
-      left: portOffsetX,
-      top: portOffsetY,
-      hoverCursor: "pointer",
+    // 3. Port Circles: apply .connected, .disconnected, .user, .qemu states
+    const nodePorts = node.ports || tmpl?.ports || [];
+    nodePorts.forEach((port) => {
+      if (elemId === port.id || elemId === `port-${port.name}` || elemId.endsWith(port.id)) {
+        obj.portId = port.id;
+        obj.hoverCursor = "pointer";
+
+        // Check if connected to any wire
+        const isConnected = wires.some(
+          (w) =>
+            (w.srcNodeId === node.id && w.srcPortId === port.id) ||
+            (w.dstNodeId === node.id && w.dstPortId === port.id),
+        );
+
+        let portColor = "#64748b"; // .disconnected (slate)
+        if (isConnected) {
+          portColor = "#10b981"; // .connected (green)
+        } else if (port.netdevType === "user") {
+          portColor = "#3b82f6"; // .user (blue)
+        } else if (port.netdevType === "qemu") {
+          portColor = "#8b5cf6"; // .qemu (purple)
+        }
+
+        if (typeof obj.set === "function") {
+          obj.set({ fill: portColor });
+        }
+      }
     });
 
-    portCircle.on("mousedown", (e) => {
-      e.e.stopPropagation();
-      onPortClick(port.id, node.x + portOffsetX, node.y + portOffsetY);
-    });
+    if (obj._objects && Array.isArray(obj._objects)) {
+      obj._objects.forEach(processElement);
+    }
+  };
 
-    groupObjects.push(portCircle);
-  });
+  svgObjects.forEach(processElement);
 
-  const nodeGroup = new Group(groupObjects, {
+  const nodeGroup = new Group(svgObjects, {
     left: node.x,
     top: node.y,
     selectable: true,
     hasControls: false,
+    subTargetCheck: true,
   });
 
   nodeGroup.isNodeGroup = true;
   nodeGroup.nodeData = node;
+
+  // Function to calculate exact absolute canvas coordinates of an SVG port anchor
+  nodeGroup.getPortAbsPosition = (portId) => {
+    // Traverse group objects to find matching port element
+    let targetPortObj = null;
+
+    const findPort = (objs) => {
+      for (const obj of objs) {
+        if (obj.portId === portId || obj.id === portId || obj.id === `port-${portId}`) {
+          targetPortObj = obj;
+          return;
+        }
+        if (obj._objects) findPort(obj._objects);
+      }
+    };
+    findPort(nodeGroup.getObjects());
+
+    if (targetPortObj) {
+      // Get center point of port object relative to group center
+      const center = targetPortObj.getCenterPoint();
+      return {
+        x: nodeGroup.left + (center.x + nodeGroup.width / 2),
+        y: nodeGroup.top + (center.y + nodeGroup.height / 2),
+      };
+    }
+
+    // Default fallback port coordinate if element id not found
+    return {
+      x: nodeGroup.left + nodeGroup.width / 2,
+      y: nodeGroup.top + nodeGroup.height / 2,
+    };
+  };
 
   return nodeGroup;
 }
