@@ -24,6 +24,7 @@ export function App() {
   const [activeTerminalNode, setActiveTerminalNode] = useState(null);
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [activeTool, setActiveTool] = useState("select"); // "select" or "wire"
   const wsClientRef = useRef(null);
 
   useEffect(() => {
@@ -36,7 +37,6 @@ export function App() {
     fetchProject("default")
       .then((top) => setProject(top))
       .catch(() => {
-        // Create default initial project topology
         const initTop = {
           id: "default",
           name: "Sample Network Lab",
@@ -94,11 +94,11 @@ export function App() {
     };
 
     if (isPortConnected(srcNodeId, srcPortId)) {
-      alert(`Port ${srcPortId} on node ${srcNodeId} already has an active connection!`);
+      alert(`Port ${srcPortId} on device ${srcNodeId} is already connected to a wire!`);
       return;
     }
     if (isPortConnected(dstNodeId, dstPortId)) {
-      alert(`Port ${dstPortId} on node ${dstNodeId} already has an active connection!`);
+      alert(`Port ${dstPortId} on device ${dstNodeId} is already connected to a wire!`);
       return;
     }
 
@@ -150,6 +150,8 @@ export function App() {
       <Toolbar
         projectName={project.name}
         isRunning={isRunning}
+        activeTool={activeTool}
+        onSelectTool={(tool) => setActiveTool(tool)}
         onStart={handleStartLab}
         onStop={handleStopLab}
         onAddDevice={() => setIsAddDeviceOpen(true)}
@@ -162,9 +164,11 @@ export function App() {
           nodes={project.nodes || []}
           wires={project.wires || []}
           templates={templates}
+          activeTool={activeTool}
           onSelectNode={(node) => setSelectedNode(node)}
           onAddWire={handleAddWire}
           onDeleteWire={handleDeleteWire}
+          onDeleteNode={handleDeleteNode}
         />
 
         <Sidebar

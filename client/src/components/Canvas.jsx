@@ -2,7 +2,16 @@ import { Canvas as FabricCanvas, Group, Line, loadSVGFromString, Rect } from "fa
 import { useCallback, useEffect, useRef } from "react";
 import { fetchTemplateDrawing } from "../services/api";
 
-export function Canvas({ nodes, wires, templates, onSelectNode, onAddWire, onDeleteWire }) {
+export function Canvas({
+  nodes,
+  wires,
+  templates,
+  activeTool,
+  onSelectNode,
+  onAddWire,
+  onDeleteWire,
+  onDeleteNode,
+}) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const fabricCanvasRef = useRef(null);
@@ -49,47 +58,83 @@ export function Canvas({ nodes, wires, templates, onSelectNode, onAddWire, onDel
     };
     window.addEventListener("resize", handleResize);
 
+    // Keyboard listener for Delete / Backspace key to remove selected device or wire
+    const handleKeyDown = (e) => {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const activeObj = canvas.getActiveObject();
+        if (activeObj?.isNodeGroup && onDeleteNode) {
+          onDeleteNode(activeObj.nodeData.id);
+        } else if (activeObj?.isWireLine && onDeleteWire) {
+          onDeleteWire(activeObj.wireData.id);
+        }
+      } else if (e.key === "Escape") {
+        cancelWiring();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
     // Click handler for nodes, ports, and wiring mode
     canvas.on("mouse:down", (opt) => {
       const target = opt.target;
       const subTarget = opt.subTarget;
+      const pointer = canvas.getScenePoint(opt.e);
 
-      // Check if user clicked directly on a port inside an SVG device group
-      if (target?.isNodeGroup && subTarget?.portId) {
-        opt.e.stopPropagation();
-        const portId = subTarget.portId;
-        const node = target.nodeData;
-        const portAbsPos = target.getPortAbsPosition(portId);
+      // Check if click was on or near a port
+      if (target?.isNodeGroup) {
+        let clickedPortId = subTarget?.portId;
+        let portAbsPos = null;
 
-        if (!wiringStateRef.current.active) {
-          // Start wire creation from this port
-          wiringStateRef.current = {
-            active: true,
-            srcNodeId: node.id,
-            srcPortId: portId,
-            tempLine: new Line([portAbsPos.x, portAbsPos.y, portAbsPos.x, portAbsPos.y], {
-              stroke: "#3b82f6",
-              strokeWidth: 3,
-              strokeDashArray: [6, 4],
-              selectable: false,
-              evented: false,
-            }),
-          };
-          canvas.add(wiringStateRef.current.tempLine);
+        if (clickedPortId) {
+          portAbsPos = target.getPortAbsPosition(clickedPortId);
         } else {
-          // Complete wire connection to destination port
-          const { srcNodeId, srcPortId } = wiringStateRef.current;
-          if (srcNodeId !== node.id || srcPortId !== portId) {
-            onAddWire(srcNodeId, srcPortId, node.id, portId);
+          // Fallback: check proximity to any port center
+          const nearPort = findClosestPortInNode(target, pointer.x, pointer.y);
+          if (nearPort) {
+            clickedPortId = nearPort.portId;
+            portAbsPos = nearPort.absPos;
           }
-          cancelWiring();
         }
-        return;
+
+        // If in Wire tool mode OR clicked directly on a port in Select mode
+        if (
+          clickedPortId &&
+          (activeTool === "wire" || wiringStateRef.current.active || subTarget?.portId)
+        ) {
+          opt.e.stopPropagation();
+          const node = target.nodeData;
+
+          if (!wiringStateRef.current.active) {
+            // Start wire creation from this port
+            wiringStateRef.current = {
+              active: true,
+              srcNodeId: node.id,
+              srcPortId: clickedPortId,
+              tempLine: new Line([portAbsPos.x, portAbsPos.y, pointer.x, pointer.y], {
+                stroke: "#3b82f6",
+                strokeWidth: 3,
+                strokeDashArray: [6, 4],
+                selectable: false,
+                evented: false,
+              }),
+            };
+            canvas.add(wiringStateRef.current.tempLine);
+          } else {
+            // Complete wire connection to destination port
+            const { srcNodeId, srcPortId } = wiringStateRef.current;
+            if (srcNodeId !== node.id || srcPortId !== clickedPortId) {
+              onAddWire(srcNodeId, srcPortId, node.id, clickedPortId);
+            }
+            cancelWiring();
+          }
+          return;
+        }
       }
 
-      // Select node on click
+      // Select node or wire on click
       if (target?.isNodeGroup) {
         onSelectNode(target.nodeData);
+      } else if (target?.isWireLine) {
+        onSelectNode(null);
       } else if (!target) {
         onSelectNode(null);
         if (wiringStateRef.current.active) {
@@ -109,9 +154,10 @@ export function Canvas({ nodes, wires, templates, onSelectNode, onAddWire, onDel
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener("keydown", handleKeyDown);
       canvas.dispose();
     };
-  }, [cancelWiring, onSelectNode, onAddWire]);
+  }, [cancelWiring, onSelectNode, onAddWire, onDeleteWire, onDeleteNode, activeTool]);
 
   // Render/Sync Nodes and Wires on Canvas
   useEffect(() => {
@@ -120,6 +166,7 @@ export function Canvas({ nodes, wires, templates, onSelectNode, onAddWire, onDel
 
     canvas.clear();
     canvas.backgroundColor = "#090d16";
+    canvas.defaultCursor = activeTool === "wire" ? "crosshair" : "default";
 
     const nodeGroupsMap = new Map();
 
@@ -154,13 +201,30 @@ export function Canvas({ nodes, wires, templates, onSelectNode, onAddWire, onDel
     };
 
     renderAll();
-  }, [nodes, wires, templates, onDeleteWire]);
+  }, [nodes, wires, templates, onDeleteWire, activeTool]);
 
   return (
     <div className="canvas-wrapper" ref={containerRef}>
       <canvas ref={canvasRef} id="netlab-canvas" />
     </div>
   );
+}
+
+// Proximity helper to find port near mouse click
+function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 20) {
+  const nodeData = nodeGroup.nodeData;
+  if (!nodeData?.ports) return null;
+
+  for (const port of nodeData.ports) {
+    const portPos = nodeGroup.getPortAbsPosition(port.id);
+    const dx = absClickX - portPos.x;
+    const dy = absClickY - portPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist <= threshold) {
+      return { portId: port.id, absPos: portPos };
+    }
+  }
+  return null;
 }
 
 // Update Wire Lines on Canvas between exact SVG port anchor positions
@@ -242,7 +306,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires) {
 
     // 2. Power Status Indicator: apply .on / .off styling
     if (elemId === "status-power" || elemId === "device-power" || elemId.includes("power")) {
-      const isPoweredOn = node.isPoweredOn || false; // default off in canvas design
+      const isPoweredOn = node.isPoweredOn || false;
       const powerColor = isPoweredOn ? "#00ff00" : "#ff0000";
       if (typeof obj.set === "function") {
         obj.set({ fill: powerColor });
@@ -304,7 +368,6 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires) {
 
   // Function to calculate exact absolute canvas coordinates of an SVG port anchor
   nodeGroup.getPortAbsPosition = (portId) => {
-    // Traverse group objects to find matching port element
     let targetPortObj = null;
 
     const findPort = (objs) => {
@@ -324,7 +387,6 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires) {
     findPort(nodeGroup.getObjects());
 
     if (targetPortObj) {
-      // Get center point of port object relative to group center
       const center = targetPortObj.getCenterPoint();
       return {
         x: nodeGroup.left + (center.x + nodeGroup.width / 2),
@@ -332,7 +394,6 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires) {
       };
     }
 
-    // Default fallback port coordinate if element id not found
     return {
       x: nodeGroup.left + nodeGroup.width / 2,
       y: nodeGroup.top + nodeGroup.height / 2,

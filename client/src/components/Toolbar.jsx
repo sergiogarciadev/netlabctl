@@ -1,8 +1,18 @@
-import { Network, Play, Plus, Square, Terminal as TerminalIcon } from "lucide-react";
+import {
+  Cable,
+  MousePointer,
+  Network,
+  Play,
+  Plus,
+  Square,
+  Terminal as TerminalIcon,
+} from "lucide-react";
 
 export function Toolbar({
   projectName,
   isRunning,
+  activeTool,
+  onSelectTool,
   onStart,
   onStop,
   onAddDevice,
@@ -17,6 +27,37 @@ export function Toolbar({
         <span style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "6px" }}>
           / {projectName || "Untitled Lab"}
         </span>
+      </div>
+
+      <div
+        className="toolbar-tools"
+        style={{
+          display: "flex",
+          gap: "4px",
+          background: "var(--bg-card)",
+          padding: "3px",
+          borderRadius: "8px",
+          border: "1px solid var(--border-color)",
+        }}
+      >
+        <button
+          type="button"
+          className={`btn ${activeTool === "select" ? "btn-primary" : ""}`}
+          style={{ padding: "4px 10px", fontSize: "0.8rem" }}
+          onClick={() => onSelectTool("select")}
+          title="Select Mode (Pointer & Drag)"
+        >
+          <MousePointer size={14} /> Select
+        </button>
+        <button
+          type="button"
+          className={`btn ${activeTool === "wire" ? "btn-primary" : ""}`}
+          style={{ padding: "4px 10px", fontSize: "0.8rem" }}
+          onClick={() => onSelectTool("wire")}
+          title="Wire Mode (Connect Ports)"
+        >
+          <Cable size={14} /> Wire
+        </button>
       </div>
 
       <div className="toolbar-controls">
