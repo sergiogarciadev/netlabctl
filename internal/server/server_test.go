@@ -1,11 +1,15 @@
 package server
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
+	"netlabctl/internal/model"
 	"netlabctl/internal/storage"
 )
 
@@ -43,5 +47,37 @@ func TestRESTEndpoints(t *testing.T) {
 	}
 	if recDraw.Header().Get("Content-Type") != "image/svg+xml" {
 		t.Fatalf("Expected Content-Type image/svg+xml, got %s", recDraw.Header().Get("Content-Type"))
+	}
+
+	// Test POST /api/projects/proj-test/nodes
+	addNodeBody := map[string]interface{}{
+		"templateId": "linux-router",
+		"name":       "Router-1",
+		"x":          150,
+		"y":          200,
+	}
+	bodyBytes, _ := json.Marshal(addNodeBody)
+	reqNode := httptest.NewRequest("POST", "/api/projects/proj-test/nodes", bytes.NewReader(bodyBytes))
+	recNode := httptest.NewRecorder()
+	router.ServeHTTP(recNode, reqNode)
+
+	if recNode.Code != http.StatusCreated {
+		t.Fatalf("POST node returned status %d, expected 201. Body: %s", recNode.Code, recNode.Body.String())
+	}
+
+	var createdNode model.Node
+	if err := json.Unmarshal(recNode.Body.Bytes(), &createdNode); err != nil {
+		t.Fatalf("Failed to unmarshal created node: %v", err)
+	}
+
+	if len(createdNode.Ports) != 4 {
+		t.Fatalf("Expected 4 ports on created linux-router node, got %d", len(createdNode.Ports))
+	}
+
+	// Verify MAC starts with 52:
+	for _, port := range createdNode.Ports {
+		if !strings.HasPrefix(port.MAC, "52:") {
+			t.Errorf("Port MAC %s does not start with 52:", port.MAC)
+		}
 	}
 }

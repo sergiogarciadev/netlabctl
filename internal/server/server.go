@@ -37,6 +37,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/projects", s.handleCreateProject)
 	s.mux.HandleFunc("GET /api/projects/{id}", s.handleGetProject)
 	s.mux.HandleFunc("PUT /api/projects/{id}", s.handleUpdateProject)
+	s.mux.HandleFunc("POST /api/projects/{id}/nodes", s.handleAddNode)
 
 	// WebSocket Endpoint
 	s.mux.HandleFunc("/ws", s.handleWS)

@@ -18,6 +18,12 @@ export async function fetchProjects() {
   return res.json();
 }
 
+export async function fetchProject(id) {
+  const res = await fetch(`/api/projects/${id}`);
+  if (!res.ok) throw new Error(`Failed to fetch project ${id}`);
+  return res.json();
+}
+
 export async function createProject(project) {
   const res = await fetch("/api/projects", {
     method: "POST",
@@ -35,6 +41,16 @@ export async function updateProject(id, project) {
     body: JSON.stringify(project),
   });
   if (!res.ok) throw new Error("Failed to update project");
+  return res.json();
+}
+
+export async function addNodeToProject(projectId, templateId, name, x, y) {
+  const res = await fetch(`/api/projects/${projectId}/nodes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ templateId, name, x, y }),
+  });
+  if (!res.ok) throw new Error("Failed to add node to project");
   return res.json();
 }
 

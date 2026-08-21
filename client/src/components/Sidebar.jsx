@@ -1,14 +1,74 @@
-import { Cpu, HardDrive, Radio, Terminal as TerminalIcon, X } from "lucide-react";
+import { Cpu, HardDrive, Radio, Terminal as TerminalIcon, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
-export function Sidebar({ selectedNode, onClose, templates, onOpenTerminal }) {
+export function Sidebar({
+  selectedNode,
+  onClose,
+  templates,
+  onOpenTerminal,
+  onUpdateNode,
+  onDeleteNode,
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [name, setName] = useState("");
+
+  useEffect(() => {
+    if (selectedNode) {
+      setName(selectedNode.name);
+      setIsEditing(false);
+    }
+  }, [selectedNode]);
+
   if (!selectedNode) return null;
 
   const tmpl = templates.find((t) => t.id === selectedNode.templateId);
 
+  const handleSave = () => {
+    onUpdateNode({
+      ...selectedNode,
+      name,
+    });
+    setIsEditing(false);
+  };
+
   return (
     <div className={`sidebar ${selectedNode ? "open" : ""}`}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h3 style={{ fontSize: "1.1rem", fontWeight: 600 }}>{selectedNode.name}</h3>
+        {isEditing ? (
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={(e) => e.key === "Enter" && handleSave()}
+            style={{
+              background: "var(--bg-dark)",
+              border: "1px solid var(--accent-primary)",
+              color: "var(--text-main)",
+              borderRadius: "4px",
+              padding: "4px 8px",
+              fontSize: "1rem",
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            style={{
+              fontSize: "1.1rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              background: "none",
+              border: "none",
+              color: "var(--text-main)",
+              textAlign: "left",
+              padding: 0,
+            }}
+            onClick={() => setIsEditing(true)}
+            title="Click to rename"
+          >
+            {selectedNode.name}
+          </button>
+        )}
         <button type="button" className="btn" style={{ padding: "4px 8px" }} onClick={onClose}>
           <X size={16} />
         </button>
@@ -29,7 +89,7 @@ export function Sidebar({ selectedNode, onClose, templates, onOpenTerminal }) {
 
       <div style={{ marginTop: "10px" }}>
         <h4 style={{ fontSize: "0.95rem", marginBottom: "10px", color: "var(--text-main)" }}>
-          Network Ports
+          Network Ports ({selectedNode.ports?.length || 0})
         </h4>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {selectedNode.ports?.map((port) => (
@@ -77,6 +137,13 @@ export function Sidebar({ selectedNode, onClose, templates, onOpenTerminal }) {
         </button>
         <button type="button" className="btn">
           <Radio size={16} /> Forward Frames (TZSP)
+        </button>
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={() => onDeleteNode(selectedNode.id)}
+        >
+          <Trash2 size={16} /> Delete Device
         </button>
       </div>
     </div>
