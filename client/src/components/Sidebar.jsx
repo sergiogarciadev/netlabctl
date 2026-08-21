@@ -80,7 +80,7 @@ export function Sidebar({
 
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.9rem" }}>
-          <Cpu size={16} /> {tmpl?.smp || 1} vCPU core(s)
+          <Cpu size={16} /> {tmpl?.smp || tmpl?.cores || 1} vCPU core(s)
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.9rem" }}>
           <HardDrive size={16} /> {tmpl?.memory || 512} MB RAM

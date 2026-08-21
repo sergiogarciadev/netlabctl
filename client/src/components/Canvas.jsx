@@ -234,25 +234,31 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires) {
     const elemId = obj.id || "";
 
     // 1. Name Status Text: update text content to machine name
-    if (elemId === "status-name" || elemId.includes("name")) {
+    if (elemId === "status-name" || elemId === "device-name" || elemId.includes("name")) {
       if (typeof obj.set === "function") {
         obj.set({ text: node.name });
       }
     }
 
-    // 2. Power Status Circle/Indicator: apply .on / .off styling
-    if (elemId === "status-power" || elemId.includes("power")) {
+    // 2. Power Status Indicator: apply .on / .off styling
+    if (elemId === "status-power" || elemId === "device-power" || elemId.includes("power")) {
       const isPoweredOn = node.isPoweredOn || false; // default off in canvas design
-      const powerColor = isPoweredOn ? "#10b981" : "#ef4444";
+      const powerColor = isPoweredOn ? "#00ff00" : "#ff0000";
       if (typeof obj.set === "function") {
         obj.set({ fill: powerColor });
       }
     }
 
-    // 3. Port Circles: apply .connected, .disconnected, .user, .qemu states
+    // 3. Port Elements: apply .connected, .disconnected, .user, .qemu states
     const nodePorts = node.ports || tmpl?.ports || [];
     nodePorts.forEach((port) => {
-      if (elemId === port.id || elemId === `port-${port.name}` || elemId.endsWith(port.id)) {
+      const isMatch =
+        elemId === port.id ||
+        elemId === `port-${port.name}` ||
+        elemId === `device-port-${port.id}` ||
+        elemId.endsWith(port.id);
+
+      if (isMatch) {
         obj.portId = port.id;
         obj.hoverCursor = "pointer";
 
@@ -263,13 +269,13 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires) {
             (w.dstNodeId === node.id && w.dstPortId === port.id),
         );
 
-        let portColor = "#64748b"; // .disconnected (slate)
+        let portColor = "#4d4d4d"; // .disconnected
         if (isConnected) {
-          portColor = "#10b981"; // .connected (green)
+          portColor = "#00ff00"; // .connected (green)
         } else if (port.netdevType === "user") {
-          portColor = "#3b82f6"; // .user (blue)
+          portColor = "#0000ff"; // .user (blue)
         } else if (port.netdevType === "qemu") {
-          portColor = "#8b5cf6"; // .qemu (purple)
+          portColor = "#8800ff"; // .qemu (purple)
         }
 
         if (typeof obj.set === "function") {
@@ -303,7 +309,12 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires) {
 
     const findPort = (objs) => {
       for (const obj of objs) {
-        if (obj.portId === portId || obj.id === portId || obj.id === `port-${portId}`) {
+        if (
+          obj.portId === portId ||
+          obj.id === portId ||
+          obj.id === `port-${portId}` ||
+          obj.id === `device-port-${portId}`
+        ) {
           targetPortObj = obj;
           return;
         }

@@ -92,7 +92,7 @@ export function AddDeviceModal({ templates, isOpen, onClose, onSelectTemplate })
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    <Cpu size={14} /> {tmpl.smp} vCPU
+                    <Cpu size={14} /> {tmpl.smp || tmpl.cores || 1} vCPU
                   </span>
                   <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                     <HardDrive size={14} /> {tmpl.memory} MB RAM
