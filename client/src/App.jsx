@@ -116,7 +116,6 @@ export function App() {
       })
       .catch((err) => console.error("[NETLAB-APP-DEBUG] Failed to load templates:", err));
 
-    fetchProject("default");
     const updateProjectState = (top) => {
       setProject(top);
       const active =
@@ -125,7 +124,7 @@ export function App() {
       setIsRunning(Boolean(active));
     };
 
-    getProject("default")
+    fetchProject("default")
       .then((top) => {
         console.log("[NETLAB-APP-DEBUG] Loaded project topology:", top);
         updateProjectState(top);
