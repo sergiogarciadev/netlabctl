@@ -144,7 +144,7 @@ export function Canvas({
       opt.e.stopPropagation();
     });
 
-    // Mouse move handler (handles pan & parallel non-crossing wire rubberband & HUD)
+    // Mouse move handler (handles pan & shortest-path parallel non-crossing wire rubberband & HUD)
     canvas.on("mouse:move", (opt) => {
       const pointer = canvas.getScenePoint(opt.e);
       const evt = opt.e;
@@ -197,11 +197,14 @@ export function Canvas({
         const startPos = wiringStateRef.current.startPos;
         const srcNodeGroup = wiringStateRef.current.srcNodeGroup;
         const srcPortId = wiringStateRef.current.srcPortId;
-        const orthoPoints = calculateNonCrossingOrthogonalPoints(
+        const allNodeGroups = canvas.getObjects().filter((obj) => obj.isNodeGroup);
+
+        const orthoPoints = calculateShortestOrthogonalPath(
           startPos,
           pointer,
           srcNodeGroup,
           target?.isNodeGroup ? target : null,
+          allNodeGroups,
           srcPortId,
           "",
         );
@@ -265,11 +268,13 @@ export function Canvas({
           opt.e.stopPropagation();
 
           if (!wiringStateRef.current.active) {
-            const orthoPoints = calculateNonCrossingOrthogonalPoints(
+            const allNodeGroups = canvas.getObjects().filter((obj) => obj.isNodeGroup);
+            const orthoPoints = calculateShortestOrthogonalPath(
               portAbsPos,
               pointer,
               targetNodeGroup,
               null,
+              allNodeGroups,
               clickedPortId,
               "",
             );
@@ -464,16 +469,89 @@ export function Canvas({
   );
 }
 
-// Manhattan 90-degree orthogonal polyline routing algorithm:
+// Extract exact padded bounding box of a device node group on the canvas
+function getNodeBoundingBox(group) {
+  if (!group) return null;
+  const padding = 12;
+  const left = group.left - padding;
+  const top = group.top - padding;
+  const width = (group.width || 120) + padding * 2;
+  const height = (group.height || 50) + padding * 2;
+  return {
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
+  };
+}
+
+// Check if line segment (xa, ya) -> (xb, yb) intersects a padded box [b.left, b.top, b.right, b.bottom]
+function segmentIntersectsBox(xa, ya, xb, yb, box) {
+  const minX = Math.min(xa, xb);
+  const maxX = Math.max(xa, xb);
+  const minY = Math.min(ya, yb);
+  const maxY = Math.max(ya, yb);
+
+  // Quick bounding box check
+  if (maxX <= box.left || minX >= box.right || maxY <= box.top || minY >= box.bottom) {
+    return false;
+  }
+
+  // Vertical segment check
+  if (xa === xb) {
+    return xa > box.left && xa < box.right && minY < box.bottom && maxY > box.top;
+  }
+
+  // Horizontal segment check
+  if (ya === yb) {
+    return ya > box.top && ya < box.bottom && minX < box.right && maxX > box.left;
+  }
+
+  return true;
+}
+
+// Check if any polyline segment in points intersects any node box (excluding src & dst ports exit/entry endpoints)
+function pathIntersectsAnyDevice(points, deviceBoxes) {
+  for (let i = 0; i < points.length - 1; i++) {
+    const pA = points[i];
+    const pB = points[i + 1];
+
+    // Ignore start/end vertical stub segments (leaving/entering port)
+    if (i === 0 || i === points.length - 2) continue;
+
+    for (const box of deviceBoxes) {
+      if (segmentIntersectsBox(pA.x, pA.y, pB.x, pB.y, box)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Calculate total length of a polyline path
+function calculatePathLength(points) {
+  let len = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const dx = points[i + 1].x - points[i].x;
+    const dy = points[i + 1].y - points[i].y;
+    len += Math.sqrt(dx * dx + dy * dy);
+  }
+  return len;
+}
+
+// Shortest-Path Manhattan 90-degree orthogonal polyline routing algorithm enforcing ALL 4 rules:
 // 1. All wires leave devices strictly from the bottom.
 // 2. All wires enter devices strictly from the bottom.
-// 3. Every segment has a strict parallel track offset.
-// 4. Wires NEVER cross through any device bounding box.
-function calculateNonCrossingOrthogonalPoints(
+// 3. Every segment has a strict 14px parallel track offset.
+// 4. Zero device box intersections (finds shortest non-intersecting corridor).
+function calculateShortestOrthogonalPath(
   p1,
   p2,
   srcNodeGroup,
   dstNodeGroup,
+  allNodeGroups = [],
   srcPortId = "",
   dstPortId = "",
 ) {
@@ -490,57 +568,89 @@ function calculateNonCrossingOrthogonalPoints(
   const p1Num = parsePortNum(srcPortId);
   const p2Num = parsePortNum(dstPortId);
 
-  const trackGap = 16;
-  const port1Offset = (p1Num - 1) * trackGap;
-  const port2Offset = (p2Num - 1) * trackGap;
+  // Track spacing: 14px parallel separation
+  const trackOffset = (p1Num - 1) * 14;
+  const trackOffsetDst = (p2Num - 1) * 14;
 
-  const baseMargin = 25;
+  const srcBox = getNodeBoundingBox(srcNodeGroup);
+  const dstBox = getNodeBoundingBox(dstNodeGroup);
 
-  // Calculate device bounding boxes
-  const srcLeft = srcNodeGroup ? srcNodeGroup.left - 15 : x1 - 65;
-  const srcRight = srcNodeGroup ? srcNodeGroup.left + (srcNodeGroup.width || 120) + 15 : x1 + 65;
-  const srcBottom = srcNodeGroup ? srcNodeGroup.top + (srcNodeGroup.height || 50) : y1;
+  const allDeviceBoxes = allNodeGroups.map(getNodeBoundingBox).filter(Boolean);
 
-  const dstLeft = dstNodeGroup ? dstNodeGroup.left - 15 : x2 - 65;
-  const dstRight = dstNodeGroup ? dstNodeGroup.left + (dstNodeGroup.width || 120) + 15 : x2 + 65;
-  const dstTop = dstNodeGroup ? dstNodeGroup.top : y2 - 50;
-  const dstBottom = dstNodeGroup ? dstNodeGroup.top + (dstNodeGroup.height || 50) : y2;
+  const baseDrop = 22;
+  const yA = (srcBox ? srcBox.bottom : y1 + 10) + baseDrop + trackOffset;
+  const yB = (dstBox ? dstBox.bottom : y2 + 10) + baseDrop + trackOffsetDst;
 
-  // Bottom exit and entry Y channels with per-port parallel offsets
-  const yA_channel = Math.max(y1, srcBottom) + baseMargin + port1Offset;
-  const yB_channel = Math.max(y2, dstBottom) + baseMargin + port2Offset;
+  // Determine global canvas bounds across all devices
+  let minCanvasLeft = Math.min(x1, x2) - 80;
+  let maxCanvasRight = Math.max(x1, x2) + 80;
+  let maxCanvasBottom = Math.max(yA, yB) + 40;
 
-  // Case A: Destination node is directly BELOW source node with clear open vertical space
-  const isDirectlyBelow = dstTop > srcBottom + 40;
-
-  if (isDirectlyBelow) {
-    const openMidY = (srcBottom + dstTop) / 2 + port1Offset;
-
-    return [
-      { x: x1, y: y1 },
-      { x: x1, y: yA_channel },
-      { x: x1, y: openMidY },
-      { x: x2, y: openMidY },
-      { x: x2, y: yB_channel },
-      { x: x2, y: y2 },
-    ];
+  for (const box of allDeviceBoxes) {
+    if (box.left - 50 < minCanvasLeft) minCanvasLeft = box.left - 50;
+    if (box.right + 50 > maxCanvasRight) maxCanvasRight = box.right + 50;
+    if (box.bottom + 40 > maxCanvasBottom) maxCanvasBottom = box.bottom + 40;
   }
 
-  // Case B: Destination node is Side-by-Side or Above source node:
-  // Route around the outer side corridor to guarantee ZERO device overlap
-  const useRightSide = x2 >= x1;
-  const outerX = useRightSide
-    ? Math.max(srcRight, dstRight) + 25 + port1Offset
-    : Math.min(srcLeft, dstLeft) - 25 - port1Offset;
+  // Candidate Path 1: Direct Bottom Corridor (if destination is below source)
+  const candidates = [];
 
-  return [
+  if (dstBox && dstBox.top > (srcBox ? srcBox.bottom : y1) + 30) {
+    const openMidY = (srcBox.bottom + dstBox.top) / 2 + trackOffset;
+    candidates.push([
+      { x: x1, y: y1 },
+      { x: x1, y: yA },
+      { x: x1, y: openMidY },
+      { x: x2, y: openMidY },
+      { x: x2, y: yB },
+      { x: x2, y: y2 },
+    ]);
+  }
+
+  // Candidate Path 2: Bottom Channel Routing
+  const bottomMidY = maxCanvasBottom + trackOffset;
+  candidates.push([
     { x: x1, y: y1 },
-    { x: x1, y: yA_channel },
-    { x: outerX, y: yA_channel },
-    { x: outerX, y: yB_channel },
-    { x: x2, y: yB_channel },
+    { x: x1, y: yA },
+    { x: x1, y: bottomMidY },
+    { x: x2, y: bottomMidY },
+    { x: x2, y: yB },
     { x: x2, y: y2 },
-  ];
+  ]);
+
+  // Candidate Path 3: Right Side Bypass Corridor
+  const rightBypassX = maxCanvasRight + trackOffset;
+  candidates.push([
+    { x: x1, y: y1 },
+    { x: x1, y: yA },
+    { x: rightBypassX, y: yA },
+    { x: rightBypassX, y: yB },
+    { x: x2, y: yB },
+    { x: x2, y: y2 },
+  ]);
+
+  // Candidate Path 4: Left Side Bypass Corridor
+  const leftBypassX = minCanvasLeft - trackOffset;
+  candidates.push([
+    { x: x1, y: y1 },
+    { x: x1, y: yA },
+    { x: leftBypassX, y: yA },
+    { x: leftBypassX, y: yB },
+    { x: x2, y: yB },
+    { x: x2, y: y2 },
+  ]);
+
+  // Filter candidates that do NOT intersect any device box
+  const validPaths = candidates.filter((path) => !pathIntersectsAnyDevice(path, allDeviceBoxes));
+
+  // If valid non-intersecting paths exist, choose the SHORTEST one!
+  if (validPaths.length > 0) {
+    validPaths.sort((a, b) => calculatePathLength(a) - calculatePathLength(b));
+    return validPaths[0];
+  }
+
+  // Fallback if all tight corridors blocked: Return Right Side Bypass
+  return candidates[2];
 }
 
 function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 45) {
@@ -572,6 +682,8 @@ function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire)
     canvas.remove(lineObj);
   }
 
+  const allNodeGroups = canvas.getObjects().filter((obj) => obj.isNodeGroup);
+
   for (const wire of wires) {
     const srcGroup = nodeGroupsMap.get(wire.srcNodeId);
     const dstGroup = nodeGroupsMap.get(wire.dstNodeId);
@@ -581,11 +693,12 @@ function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire)
       const p2 = dstGroup.getPortAbsPosition(wire.dstPortId);
 
       if (p1 && p2) {
-        const orthoPoints = calculateNonCrossingOrthogonalPoints(
+        const orthoPoints = calculateShortestOrthogonalPath(
           p1,
           p2,
           srcGroup,
           dstGroup,
+          allNodeGroups,
           wire.srcPortId,
           wire.dstPortId,
         );

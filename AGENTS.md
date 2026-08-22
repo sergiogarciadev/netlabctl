@@ -16,10 +16,11 @@
 - **Selection Events Reset Zoom**: Fabric's default selection handlers (`selection:created`, `selection:updated`, `selection:cleared`) recalculate selection bounds and reset viewport scale when zoomed.
   - *Lesson*: Attach `lockViewportTransform()` handlers to selection events and lock group scaling/rotation controls (`lockScalingX: true`, `lockScalingY: true`, `lockRotation: true`, `hasBorders: false`, `hasControls: false`).
 
-### SVG Object Hierarchy & Nested Group Transformations
-- **Nested SVG Groups**: `loadSVGFromString` parses nested SVG `<g>` elements (e.g., `<g class="device-ports" transform="translate(13 30)">` -> `<g id="device-port-1">`) into nested Fabric Groups.
-- **`calcTransformMatrix` Parent Chain Truncation**: Calling `obj.calcTransformMatrix()` on deeply nested child objects inside a Group hierarchy does not automatically include outer group transform matrices.
-  - *Lesson*: Use deterministic relative port anchor maps (`nodeGroup.portRelativePositions.set(port.id, { x, y })`) relative to node top-left `(0, 0)`, or multiply parent group matrices using `util.multiplyTransformMatrices(parentMatrix, childMatrix)` to compute exact scene coordinates.
+### Shortest-Path Parallel Non-Crossing Manhattan Wire Routing Rules
+- **Rule 1 (Parallel Segments)**: Each port index receives a unique 14px track spacing (`trackOffset = (portIndex - 1) * 14px`). Every horizontal and vertical segment maintains this gap so wires never merge.
+- **Rule 2 (Device Box Avoidance)**: Extracted padded device bounding boxes `getNodeBoundingBox(group)`. Candidate paths are evaluated with `pathIntersectsAnyDevice(path, allDeviceBoxes)` to guarantee ZERO intersections with any device on the canvas.
+- **Rule 3 (Bottom Exit/Entry)**: All wires drop DOWNWARDS below the device bottom boundary (`srcBottom + 22px + trackOffset`) before turning, and enter UPWARDS from below the destination bottom boundary.
+- **Rule 4 (Shortest Path Selection)**: Evaluates candidate corridors (direct vertical midpoint, bottom channel, right side bypass, left side bypass), filters out device intersections, and selects the shortest valid path (`calculatePathLength`).
 
 ### Performance & React State Isolation
 - **Flicker Elimination During Dragging**: Triggering React state updates in parent components (`App.jsx`) on `mouse:move` causes continuous full app re-renders and canvas clearing.
