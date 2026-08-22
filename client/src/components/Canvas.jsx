@@ -481,24 +481,24 @@ export function Canvas({
   );
 }
 
-// Check if targetGroup collides with or violates the 100px bottom clearance gap of any other device
+// Check if targetGroup collides with or violates the 100px vertical clearance requirement of any other device
 function checkDeviceCollision(targetGroup, allGroups) {
   const targetWidth = targetGroup.width || 120;
   const targetHeight = targetGroup.height || 50;
 
   const minHorizontalGap = 20;
-  const minBottomGap = 100; // Must have at least 100px clearance on bottom from another device
+  const minVerticalGap = 100; // Must have at least 100px vertical clearance between vertically aligned devices
+
+  const tLeft = targetGroup.left;
+  const tRight = tLeft + targetWidth;
+  const tTop = targetGroup.top;
+  const tBottom = tTop + targetHeight;
 
   for (const other of allGroups) {
     if (other === targetGroup || !other.isNodeGroup) continue;
 
     const otherWidth = other.width || 120;
     const otherHeight = other.height || 50;
-
-    const tLeft = targetGroup.left;
-    const tRight = tLeft + targetWidth;
-    const tTop = targetGroup.top;
-    const tBottom = tTop + targetHeight;
 
     const oLeft = other.left;
     const oRight = oLeft + otherWidth;
@@ -508,15 +508,19 @@ function checkDeviceCollision(targetGroup, allGroups) {
     // Check horizontal overlap with 20px gap
     const isHorizOverlap = tRight + minHorizontalGap > oLeft && tLeft - minHorizontalGap < oRight;
 
-    // Check vertical overlap with 100px bottom clearance
-    const isBelowOther = tTop >= oTop;
-    const verticalClearanceNeeded = isBelowOther ? minBottomGap : 20;
-
-    const isVertOverlap =
-      tBottom + verticalClearanceNeeded > oTop && tTop - verticalClearanceNeeded < oBottom;
-
-    if (isHorizOverlap && isVertOverlap) {
-      return true; // Collision / Clearance violation!
+    if (isHorizOverlap) {
+      // Symmetrical 100px vertical clearance check:
+      // If target is above 'other': target bottom must be <= other top - 100px
+      // If target is below 'other': target top must be >= other bottom + 100px
+      if (tTop < oTop) {
+        if (tBottom + minVerticalGap > oTop) {
+          return true; // Too close above 'other'!
+        }
+      } else {
+        if (tTop - minVerticalGap < oBottom) {
+          return true; // Too close below 'other'!
+        }
+      }
     }
   }
 
