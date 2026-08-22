@@ -43,6 +43,7 @@ export function Canvas({
 
   const viewportTransformRef = useRef([1, 0, 0, 1, 0, 0]);
   const wirePolylineMapRef = useRef(new Map());
+  const wirePointsCacheRef = useRef(new Map());
   const wireStatsRef = useRef([]);
 
   // Isolated local debug info state
@@ -52,6 +53,33 @@ export function Canvas({
   useEffect(() => {
     wireStatsRef.current = wireStats;
   }, [wireStats]);
+
+  // Synchronously calculate and cache wire path points from topology state
+  useEffect(() => {
+    const nodeMap = new Map((nodes || []).map((n) => [n.id, n]));
+    const cache = new Map();
+
+    for (const wire of wires || []) {
+      const srcNode = nodeMap.get(wire.srcNodeId);
+      const dstNode = nodeMap.get(wire.dstNodeId);
+      if (!srcNode || !dstNode) continue;
+
+      const p1 = getPortAbsPositionFromNodeData(srcNode, wire.srcPortId, templates);
+      const p2 = getPortAbsPositionFromNodeData(dstNode, wire.dstPortId, templates);
+
+      const orthoPoints = calculateShortestOrthogonalPath(
+        p1,
+        p2,
+        null,
+        null,
+        [],
+        wire.srcPortId,
+        wire.dstPortId,
+      );
+      cache.set(wire.id, orthoPoints);
+    }
+    wirePointsCacheRef.current = cache;
+  }, [nodes, wires, templates]);
 
   // Helper function to animate packet circle along polyline points array
   const triggerCircleAnimation = useCallback((canvas, points, count, isReverse) => {
@@ -166,12 +194,15 @@ export function Canvas({
     if (!canvas || canvas.isDisposed || !wireStats || wireStats.length === 0) return;
 
     wireStats.forEach((stat) => {
-      // Direct Canvas Object Lookup for wire line (bulletproof against map cache race conditions)
+      // 3-Level Fallback for wire points lookup (Canvas object -> Polyline map -> Synchronous Topology cache)
       const wireLineObj = canvas
         .getObjects()
         .find((obj) => obj.isWireLine && obj.wireData?.id === stat.wireId);
 
-      const points = wireLineObj?.points || wirePolylineMapRef.current.get(stat.wireId)?.points;
+      const points =
+        wireLineObj?.points ||
+        wirePolylineMapRef.current.get(stat.wireId)?.points ||
+        wirePointsCacheRef.current.get(stat.wireId);
       if (!points || points.length < 2) {
         console.warn("[NETLAB-ANIM-DEBUG] Wire line points not found for wireId:", stat.wireId);
         return;
@@ -1156,4 +1187,18 @@ function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
   let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
+}
+
+function getPortAbsPositionFromNodeData(node, portId, templates) {
+  const tmpl = templates?.find((t) => t.id === node.templateId);
+  const ports = node.ports || tmpl?.ports || [];
+  const idx = ports.findIndex((p) => p.id === portId || p.name === portId);
+
+  const relX = 23 + (idx >= 0 ? idx : 0) * 25;
+  const relY = 38;
+
+  return {
+    x: (node.x || 0) + relX,
+    y: (node.y || 0) + relY,
+  };
 }
