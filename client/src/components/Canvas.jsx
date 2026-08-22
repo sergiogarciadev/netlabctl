@@ -144,7 +144,7 @@ export function Canvas({
       opt.e.stopPropagation();
     });
 
-    // Mouse move handler (handles pan & parallel 90-degree orthogonal wire rubberband & HUD)
+    // Mouse move handler (handles pan & bottom-leaving non-crossing wire rubberband & HUD)
     canvas.on("mouse:move", (opt) => {
       const pointer = canvas.getScenePoint(opt.e);
       const evt = opt.e;
@@ -195,8 +195,16 @@ export function Canvas({
 
       if (wiringStateRef.current.active && wiringStateRef.current.tempLine) {
         const startPos = wiringStateRef.current.startPos;
+        const srcNodeGroup = wiringStateRef.current.srcNodeGroup;
         const srcPortId = wiringStateRef.current.srcPortId;
-        const orthoPoints = calculateOrthogonalPoints(startPos, pointer, srcPortId, "");
+        const orthoPoints = calculateNonCrossingOrthogonalPoints(
+          startPos,
+          pointer,
+          srcNodeGroup,
+          target?.isNodeGroup ? target : null,
+          srcPortId,
+          "",
+        );
         wiringStateRef.current.tempLine.set({ points: orthoPoints });
         canvas.requestRenderAll();
       }
@@ -257,11 +265,19 @@ export function Canvas({
           opt.e.stopPropagation();
 
           if (!wiringStateRef.current.active) {
-            const orthoPoints = calculateOrthogonalPoints(portAbsPos, pointer, clickedPortId, "");
+            const orthoPoints = calculateNonCrossingOrthogonalPoints(
+              portAbsPos,
+              pointer,
+              targetNodeGroup,
+              null,
+              clickedPortId,
+              "",
+            );
 
             wiringStateRef.current = {
               active: true,
               srcNodeId: node.id,
+              srcNodeGroup: targetNodeGroup,
               srcPortId: clickedPortId,
               startPos: portAbsPos,
               tempLine: new Polyline(orthoPoints, {
@@ -448,14 +464,20 @@ export function Canvas({
   );
 }
 
-// Manhattan 90-degree orthogonal polyline point calculation with parallel channel offsets
-function calculateOrthogonalPoints(p1, p2, srcPortId = "", dstPortId = "") {
+// Manhattan 90-degree orthogonal polyline point calculation: All wires leave devices from the bottom and route around devices without crossing
+function calculateNonCrossingOrthogonalPoints(
+  p1,
+  p2,
+  srcNodeGroup,
+  dstNodeGroup,
+  srcPortId = "",
+  dstPortId = "",
+) {
   const x1 = p1.x;
   const y1 = p1.y;
   const x2 = p2.x;
   const y2 = p2.y;
 
-  // Extract port index numbers for deterministic parallel channel offsets
   const parsePortNum = (idStr) => {
     const num = Number.parseInt(String(idStr).replace(/\D/g, ""), 10);
     return Number.isNaN(num) ? 1 : num;
@@ -463,22 +485,49 @@ function calculateOrthogonalPoints(p1, p2, srcPortId = "", dstPortId = "") {
 
   const p1Num = parsePortNum(srcPortId);
   const p2Num = parsePortNum(dstPortId);
-
-  // Parallel channel shift spacing (14px separation between parallel wire tracks)
   const channelShift = (p1Num - 1) * 14 - 18 + (p2Num - 1) * 2;
-  const exitOffsetY = 20 + Math.abs(p1Num - 1) * 5;
 
-  const exitY1 = y1 + exitOffsetY;
-  const enterY2 = Math.abs(y2 - y1) > 40 ? y2 + (y2 < y1 ? exitOffsetY : -exitOffsetY) : y2;
+  // Margin to ensure wires drop strictly below device bottom boundaries
+  const margin = 25;
+  const srcBottom = (srcNodeGroup ? srcNodeGroup.top + (srcNodeGroup.height || 50) : y1) + margin;
+  const dstBottom = (dstNodeGroup ? dstNodeGroup.top + (dstNodeGroup.height || 50) : y2) + margin;
 
-  const midY = (exitY1 + enterY2) / 2 + channelShift;
+  const b1 = Math.max(y1 + margin, srcBottom);
+  const b2 = Math.max(y2 + margin, dstBottom);
+
+  const srcLeft = srcNodeGroup ? srcNodeGroup.left - 15 : x1 - 65;
+  const srcRight = srcNodeGroup ? srcNodeGroup.left + (srcNodeGroup.width || 120) + 15 : x1 + 65;
+  const dstLeft = dstNodeGroup ? dstNodeGroup.left - 15 : x2 - 65;
+  const dstRight = dstNodeGroup ? dstNodeGroup.left + (dstNodeGroup.width || 120) + 15 : x2 + 65;
+
+  // Route requires side bypass if destination is above source or if direct route crosses over a device
+  const needsSideBypass = y2 < y1 - 15 || Math.abs(x1 - x2) < 30;
+
+  if (needsSideBypass) {
+    const useRightSide = x2 >= x1;
+    const bypassX = useRightSide
+      ? Math.max(srcRight, dstRight) + 25 + Math.abs(channelShift)
+      : Math.min(srcLeft, dstLeft) - 25 - Math.abs(channelShift);
+
+    return [
+      { x: x1, y: y1 },
+      { x: x1, y: b1 },
+      { x: bypassX, y: b1 },
+      { x: bypassX, y: b2 + channelShift },
+      { x: x2, y: b2 + channelShift },
+      { x: x2, y: y2 },
+    ];
+  }
+
+  // Direct bottom corridor routing
+  const midY = Math.max(b1, b2) + channelShift;
 
   return [
     { x: x1, y: y1 },
-    { x: x1, y: exitY1 },
+    { x: x1, y: b1 },
     { x: x1, y: midY },
     { x: x2, y: midY },
-    { x: x2, y: enterY2 },
+    { x: x2, y: b2 },
     { x: x2, y: y2 },
   ];
 }
@@ -521,7 +570,14 @@ function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire)
       const p2 = dstGroup.getPortAbsPosition(wire.dstPortId);
 
       if (p1 && p2) {
-        const orthoPoints = calculateOrthogonalPoints(p1, p2, wire.srcPortId, wire.dstPortId);
+        const orthoPoints = calculateNonCrossingOrthogonalPoints(
+          p1,
+          p2,
+          srcGroup,
+          dstGroup,
+          wire.srcPortId,
+          wire.dstPortId,
+        );
 
         const wirePolyline = new Polyline(orthoPoints, {
           stroke: wire.tzspTarget ? "#f59e0b" : "#10b981",
