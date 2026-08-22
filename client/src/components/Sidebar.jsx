@@ -635,21 +635,32 @@ export function Sidebar({
                         fontSize: "0.75rem",
                         width: "100%",
                         justifyContent: "center",
-                        background: wire?.tzspTarget ? "rgba(16, 185, 129, 0.15)" : "none",
-                        borderColor: wire?.tzspTarget ? "#10b981" : "var(--border-color)",
-                        color: wire?.tzspTarget ? "#10b981" : "var(--text-main)",
+                        background: wire?.tzspTarget ? "rgba(239, 68, 68, 0.15)" : "none",
+                        borderColor: wire?.tzspTarget ? "#ef4444" : "var(--border-color)",
+                        color: wire?.tzspTarget ? "#ef4444" : "var(--text-main)",
                       }}
                       onClick={() => {
                         if (!isConnected) {
                           alert("Connect this port to a wire first to forward TZSP frames!");
                           return;
                         }
-                        setActiveTzspPortId(port.id);
+                        if (wire?.tzspTarget) {
+                          // Deactivate TZSP directly on click when currently active!
+                          if (onUpdateWire && wire) {
+                            onUpdateWire({
+                              ...wire,
+                              tzspTarget: "",
+                            });
+                          }
+                          setActiveTzspPortId(null);
+                        } else {
+                          setActiveTzspPortId(port.id);
+                        }
                       }}
                     >
                       <Radio size={12} />{" "}
                       {wire?.tzspTarget
-                        ? `TZSP Active (${wire.tzspTarget})`
+                        ? `Stop TZSP (${wire.tzspTarget})`
                         : "Forward Frames (TZSP)"}
                     </button>
                   )}
