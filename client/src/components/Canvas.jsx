@@ -472,7 +472,7 @@ export function Canvas({
 // Extract exact padded bounding box of a device node group on the canvas
 function getNodeBoundingBox(group) {
   if (!group) return null;
-  const padding = 12;
+  const padding = 8;
   const left = group.left - padding;
   const top = group.top - padding;
   const width = (group.width || 120) + padding * 2;
@@ -487,24 +487,21 @@ function getNodeBoundingBox(group) {
   };
 }
 
-// Check if line segment (xa, ya) -> (xb, yb) intersects a padded box [b.left, b.top, b.right, b.bottom]
+// Check if line segment (xa, ya) -> (xb, yb) intersects a padded box
 function segmentIntersectsBox(xa, ya, xb, yb, box) {
   const minX = Math.min(xa, xb);
   const maxX = Math.max(xa, xb);
   const minY = Math.min(ya, yb);
   const maxY = Math.max(ya, yb);
 
-  // Quick bounding box check
   if (maxX <= box.left || minX >= box.right || maxY <= box.top || minY >= box.bottom) {
     return false;
   }
 
-  // Vertical segment check
   if (xa === xb) {
     return xa > box.left && xa < box.right && minY < box.bottom && maxY > box.top;
   }
 
-  // Horizontal segment check
   if (ya === yb) {
     return ya > box.top && ya < box.bottom && minX < box.right && maxX > box.left;
   }
@@ -512,7 +509,7 @@ function segmentIntersectsBox(xa, ya, xb, yb, box) {
   return true;
 }
 
-// Check if any polyline segment in points intersects any node box (excluding src & dst ports exit/entry endpoints)
+// Check if any polyline segment in points intersects any node box
 function pathIntersectsAnyDevice(points, deviceBoxes) {
   for (let i = 0; i < points.length - 1; i++) {
     const pA = points[i];
@@ -541,11 +538,8 @@ function calculatePathLength(points) {
   return len;
 }
 
-// Shortest-Path Manhattan 90-degree orthogonal polyline routing algorithm enforcing ALL 4 rules:
-// 1. All wires leave devices strictly from the bottom.
-// 2. All wires enter devices strictly from the bottom.
-// 3. Every segment has a strict 14px parallel track offset.
-// 4. Zero device box intersections (finds shortest non-intersecting corridor).
+// Shortest-Path Manhattan 90-degree orthogonal polyline routing algorithm:
+// Evaluates tight local bottom channels, vertical midpoints, and side bypasses
 function calculateShortestOrthogonalPath(
   p1,
   p2,
@@ -568,7 +562,7 @@ function calculateShortestOrthogonalPath(
   const p1Num = parsePortNum(srcPortId);
   const p2Num = parsePortNum(dstPortId);
 
-  // Track spacing: 14px parallel separation
+  // Track spacing: 14px parallel separation per port
   const trackOffset = (p1Num - 1) * 14;
   const trackOffsetDst = (p2Num - 1) * 14;
 
@@ -577,25 +571,23 @@ function calculateShortestOrthogonalPath(
 
   const allDeviceBoxes = allNodeGroups.map(getNodeBoundingBox).filter(Boolean);
 
-  const baseDrop = 22;
-  const yA = (srcBox ? srcBox.bottom : y1 + 10) + baseDrop + trackOffset;
-  const yB = (dstBox ? dstBox.bottom : y2 + 10) + baseDrop + trackOffsetDst;
+  const baseDrop = 16;
+  const yA = (srcBox ? srcBox.bottom : y1 + 8) + baseDrop + trackOffset;
+  const yB = (dstBox ? dstBox.bottom : y2 + 8) + baseDrop + trackOffsetDst;
 
-  // Determine global canvas bounds across all devices
-  let minCanvasLeft = Math.min(x1, x2) - 80;
-  let maxCanvasRight = Math.max(x1, x2) + 80;
-  let maxCanvasBottom = Math.max(yA, yB) + 40;
-
-  for (const box of allDeviceBoxes) {
-    if (box.left - 50 < minCanvasLeft) minCanvasLeft = box.left - 50;
-    if (box.right + 50 > maxCanvasRight) maxCanvasRight = box.right + 50;
-    if (box.bottom + 40 > maxCanvasBottom) maxCanvasBottom = box.bottom + 40;
-  }
-
-  // Candidate Path 1: Direct Bottom Corridor (if destination is below source)
   const candidates = [];
 
-  if (dstBox && dstBox.top > (srcBox ? srcBox.bottom : y1) + 30) {
+  // Candidate 1: Local Tight Bottom Channel (just 16px below the src & dst device bottoms)
+  const localBottomY = Math.max(yA, yB);
+  candidates.push([
+    { x: x1, y: y1 },
+    { x: x1, y: localBottomY },
+    { x: x2, y: localBottomY },
+    { x: x2, y: y2 },
+  ]);
+
+  // Candidate 2: Direct Midpoint Corridor (if destination device is vertically below source)
+  if (dstBox && dstBox.top > (srcBox ? srcBox.bottom : y1) + 20) {
     const openMidY = (srcBox.bottom + dstBox.top) / 2 + trackOffset;
     candidates.push([
       { x: x1, y: y1 },
@@ -607,19 +599,13 @@ function calculateShortestOrthogonalPath(
     ]);
   }
 
-  // Candidate Path 2: Bottom Channel Routing
-  const bottomMidY = maxCanvasBottom + trackOffset;
-  candidates.push([
-    { x: x1, y: y1 },
-    { x: x1, y: yA },
-    { x: x1, y: bottomMidY },
-    { x: x2, y: bottomMidY },
-    { x: x2, y: yB },
-    { x: x2, y: y2 },
-  ]);
+  // Candidate 3: Side-Bypass Corridors
+  const srcRight = srcBox ? srcBox.right : x1 + 60;
+  const dstRight = dstBox ? dstBox.right : x2 + 60;
+  const srcLeft = srcBox ? srcBox.left : x1 - 60;
+  const dstLeft = dstBox ? dstBox.left : x2 - 60;
 
-  // Candidate Path 3: Right Side Bypass Corridor
-  const rightBypassX = maxCanvasRight + trackOffset;
+  const rightBypassX = Math.max(srcRight, dstRight) + 20 + trackOffset;
   candidates.push([
     { x: x1, y: y1 },
     { x: x1, y: yA },
@@ -629,8 +615,7 @@ function calculateShortestOrthogonalPath(
     { x: x2, y: y2 },
   ]);
 
-  // Candidate Path 4: Left Side Bypass Corridor
-  const leftBypassX = minCanvasLeft - trackOffset;
+  const leftBypassX = Math.min(srcLeft, dstLeft) - 20 - trackOffset;
   candidates.push([
     { x: x1, y: y1 },
     { x: x1, y: yA },
@@ -640,17 +625,17 @@ function calculateShortestOrthogonalPath(
     { x: x2, y: y2 },
   ]);
 
-  // Filter candidates that do NOT intersect any device box
+  // Filter candidate paths that do NOT intersect any device box
   const validPaths = candidates.filter((path) => !pathIntersectsAnyDevice(path, allDeviceBoxes));
 
-  // If valid non-intersecting paths exist, choose the SHORTEST one!
+  // Choose the SHORTEST valid non-intersecting path!
   if (validPaths.length > 0) {
     validPaths.sort((a, b) => calculatePathLength(a) - calculatePathLength(b));
     return validPaths[0];
   }
 
-  // Fallback if all tight corridors blocked: Return Right Side Bypass
-  return candidates[2];
+  // Fallback: Tight local bottom channel
+  return candidates[0];
 }
 
 function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 45) {
