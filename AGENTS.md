@@ -38,3 +38,25 @@
 - **System Specifications**: Memory (RAM) and vCPU (SMP) are stored per node on `model.Node` and are editable. Default values inherit from device template `machine.json`.
 - **Scripts**: Userdata and metadata cloud-init script templates support `${{{ model.var }}}` placeholders.
 - **Per-Port Connection Status & TZSP Forwarding**: Each port item card displays live connection status (`Connected → TargetDevice (targetPort)` vs `Disconnected`) and has its own dedicated **Forward Frames (TZSP)** UDP mirroring target button.
+
+---
+
+## 4. QEMU Simulation, Managed Network & Serial Console Guidelines
+
+### Managed Network Sockets & Port Keying
+- **Composite Port Keys**: Never key port address maps using template port IDs alone (e.g. `device-port-1`), as they are identical across devices. Always use a composite key `nodeID + ":" + portID` (e.g. `node-1:device-port-1` vs `node-2:device-port-1`).
+- **Unique `127.0.N.P:PORT` Allocation**: Every port on every node is assigned a unique loopback IP `127.0.N.P` and TCP port `10000 + N*20 + P`. Do not use `-netdev user` driver.
+- **Managed Network Listeners**: `ManagedNetwork` opens TCP listeners on `127.0.N.P:PORT`. QEMU instances connect using `-netdev socket,id=net<i&>,connect=127.0.<N>.<P>:<PORT>`.
+
+### QEMU Stream Socket 4-Byte Framing
+- **Packet Header Requirement**: QEMU stream socket netdevs prefix every Ethernet frame with a **4-byte big-endian network byte order length field** (`uint32_t len`).
+- **Stream Forwarding**: When forwarding packets through a Go TCP proxy bridge (`WireBridge`), parse and forward the 4-byte length header along with the frame payload (`binary.BigEndian.Uint32(header)`). This preserves ICMP pings and Ethernet frame boundaries.
+
+### QEMU Monitor UNIX Socket (`set_link`)
+- **Monitor Parameter**: Pass `-monitor unix:<nodeDir>/monitor.sock,server,nowait` on QEMU startup.
+- **Link Status Reporting**: Send HMP command `set_link eth<i&> on` for connected wire ports, and `set_link eth<i&> off` for unconnected ports over the node's QEMU monitor socket.
+
+### Vite Dev Server & Serial Console Connection
+- **Vite WebSocket Proxy**: In `vite.config.js`, set `ws: true` for the `/api` proxy rule (in addition to `/ws`).
+- **Terminal Host Resolution**: In `TerminalWindow.jsx`, resolve host to port `8080` when running under Vite dev mode (`window.location.port === "3000"`).
+- **Standby & Auto-Reconnect**: When a machine is powered off, display `Machine is powered off. Waiting for machine to start...` in `xterm.js`. Automatically poll and reconnect to the node's QEMU `serial.sock` as soon as the simulation is launched.
