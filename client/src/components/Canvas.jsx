@@ -32,6 +32,9 @@ export function Canvas({
     lastPosY: 0,
   });
 
+  // Persistent reference to viewport transform matrix across all selection events
+  const viewportTransformRef = useRef([1, 0, 0, 1, 0, 0]);
+
   // Isolated local debug info state
   const [debugInfo, setDebugInfo] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -52,6 +55,9 @@ export function Canvas({
     let zoom = canvas.getZoom() * 1.2;
     if (zoom > 4) zoom = 4;
     canvas.zoomToPoint({ x: canvas.width / 2, y: canvas.height / 2 }, zoom);
+    if (canvas.viewportTransform) {
+      viewportTransformRef.current = [...canvas.viewportTransform];
+    }
     setZoomLevel(Math.round(zoom * 100));
   };
 
@@ -61,6 +67,9 @@ export function Canvas({
     let zoom = canvas.getZoom() / 1.2;
     if (zoom < 0.25) zoom = 0.25;
     canvas.zoomToPoint({ x: canvas.width / 2, y: canvas.height / 2 }, zoom);
+    if (canvas.viewportTransform) {
+      viewportTransformRef.current = [...canvas.viewportTransform];
+    }
     setZoomLevel(Math.round(zoom * 100));
   };
 
@@ -68,6 +77,7 @@ export function Canvas({
     const canvas = fabricCanvasRef.current;
     if (!canvas || canvas.isDisposed) return;
     canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    viewportTransformRef.current = [1, 0, 0, 1, 0, 0];
     setZoomLevel(100);
   };
 
@@ -86,6 +96,7 @@ export function Canvas({
       backgroundColor: "#090d16",
       selection: true,
       subTargetCheck: true,
+      preserveObjectStacking: true,
     });
 
     fabricCanvasRef.current = canvas;
@@ -125,6 +136,9 @@ export function Canvas({
       if (zoom < 0.25) zoom = 0.25;
 
       canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+      if (canvas.viewportTransform) {
+        viewportTransformRef.current = [...canvas.viewportTransform];
+      }
       setZoomLevel(Math.round(zoom * 100));
 
       opt.e.preventDefault();
@@ -142,6 +156,7 @@ export function Canvas({
         vpt[5] += evt.clientY - panStateRef.current.lastPosY;
         panStateRef.current.lastPosX = evt.clientX;
         panStateRef.current.lastPosY = evt.clientY;
+        viewportTransformRef.current = [...vpt];
         canvas.requestRenderAll();
         return;
       }
@@ -185,8 +200,20 @@ export function Canvas({
       }
     });
 
+    // Enforce viewport transform lock during selection events
+    const lockViewportTransform = () => {
+      if (canvas && !canvas.isDisposed && viewportTransformRef.current) {
+        canvas.setViewportTransform(viewportTransformRef.current);
+      }
+    };
+
+    canvas.on("selection:created", lockViewportTransform);
+    canvas.on("selection:updated", lockViewportTransform);
+    canvas.on("selection:cleared", lockViewportTransform);
+
     // Mouse down handler (handles canvas panning & selection & port wiring)
     canvas.on("mouse:down", (opt) => {
+      lockViewportTransform();
       const evt = opt.e;
 
       // Enable canvas panning via Middle Click or Alt/Option Click or Spacebar
@@ -272,6 +299,7 @@ export function Canvas({
 
     // Mouse up handler
     canvas.on("mouse:up", () => {
+      lockViewportTransform();
       if (panStateRef.current.isPanning) {
         panStateRef.current.isPanning = false;
         canvas.selection = activeTool === "select";
@@ -310,14 +338,11 @@ export function Canvas({
 
       if (isCancelled || canvas.isDisposed || !canvas.getContext()) return;
 
-      // Preserve viewport transform (zoom and pan offsets) across canvas syncs!
-      const currentVpt = canvas.viewportTransform ? [...canvas.viewportTransform] : null;
-
       canvas.clear();
       canvas.backgroundColor = "#090d16";
 
-      if (currentVpt) {
-        canvas.setViewportTransform(currentVpt);
+      if (viewportTransformRef.current) {
+        canvas.setViewportTransform(viewportTransformRef.current);
       }
 
       for (const node of nodes) {
@@ -574,7 +599,11 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     left: node.x,
     top: node.y,
     selectable: activeTool === "select",
+    hasBorders: false,
     hasControls: false,
+    lockScalingX: true,
+    lockScalingY: true,
+    lockRotation: true,
     subTargetCheck: true,
   });
 
