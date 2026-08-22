@@ -3,6 +3,9 @@
   "linter": {
     "enabled": true,
     "rules": {
+      "a11y": {
+        "useSemanticElements": "off"
+      },
       "complexity": {
         "noImportantStyles": "off"
       }

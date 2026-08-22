@@ -171,13 +171,29 @@ html,
   bottom: 0;
   left: 0;
   width: 100%;
-  height: 320px;
   background: #090d16;
   border-top: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   z-index: 30;
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.7);
+}
+
+.terminal-resize-handle {
+  height: 6px;
+  width: 100%;
+  background: transparent;
+  cursor: ns-resize;
+  position: absolute;
+  top: -3px;
+  left: 0;
+  z-index: 40;
+  transition: background 0.15s ease;
+}
+
+.terminal-resize-handle:hover,
+.terminal-resize-handle:active {
+  background: var(--accent-blue);
 }
 
 .terminal-header {
