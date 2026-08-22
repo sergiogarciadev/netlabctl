@@ -298,8 +298,21 @@ function extractPortIdFromSubTarget(subTarget, nodeData) {
   return null;
 }
 
-// Proximity helper using exact matrix transformed port coordinates
-function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 35) {
+// Calculates absolute scene center point for an object nested inside arbitrarily deep groups
+function getAbsoluteObjectCenter(obj) {
+  if (!obj) return null;
+  let matrix = obj.calcTransformMatrix();
+  let parent = obj.group;
+  while (parent) {
+    const parentMatrix = parent.calcTransformMatrix();
+    matrix = util.multiplyTransformMatrices(parentMatrix, matrix);
+    parent = parent.group;
+  }
+  return util.transformPoint({ x: 0, y: 0 }, matrix);
+}
+
+// Proximity helper using exact multi-level matrix transformed port coordinates
+function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 40) {
   const nodeData = nodeGroup.nodeData;
   if (!nodeData?.ports) return null;
 
@@ -415,19 +428,15 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         elemId.endsWith(port.id);
 
       if (isMatch) {
-        obj.portId = port.id;
-        obj.hoverCursor = activeTool === "wire" ? "crosshair" : "pointer";
-
-        if (obj._objects && Array.isArray(obj._objects)) {
-          const tagChildren = (children) => {
-            for (const child of children) {
-              child.portId = port.id;
-              child.hoverCursor = activeTool === "wire" ? "crosshair" : "pointer";
-              if (child._objects) tagChildren(child._objects);
-            }
-          };
-          tagChildren(obj._objects);
-        }
+        // Tag port object and recursively tag all descendant elements
+        const tagChildren = (targetObj) => {
+          targetObj.portId = port.id;
+          targetObj.hoverCursor = activeTool === "wire" ? "crosshair" : "pointer";
+          if (targetObj._objects && Array.isArray(targetObj._objects)) {
+            targetObj._objects.forEach(tagChildren);
+          }
+        };
+        tagChildren(obj);
 
         const isConnected = wires.some(
           (w) =>
@@ -468,7 +477,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   nodeGroup.isNodeGroup = true;
   nodeGroup.nodeData = node;
 
-  // Calculates exact absolute canvas coordinates of an SVG port anchor using Fabric matrix transformation
+  // Calculates exact absolute canvas coordinates of an SVG port anchor using multi-level matrix transformation
   nodeGroup.getPortAbsPosition = (portId) => {
     let targetPortObj = null;
 
@@ -489,9 +498,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     findPort(nodeGroup.getObjects());
 
     if (targetPortObj) {
-      const localCenter = targetPortObj.getCenterPoint();
-      const transformMatrix = nodeGroup.calcTransformMatrix();
-      return util.transformPoint(localCenter, transformMatrix);
+      return getAbsoluteObjectCenter(targetPortObj);
     }
 
     return {
