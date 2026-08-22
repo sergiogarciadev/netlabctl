@@ -161,6 +161,13 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		"-monitor", fmt.Sprintf("unix:%s,server,nowait", monitorSock),
 	}
 
+	if isKVMAvailable() {
+		args = append(args, "-enable-kvm")
+		logger.Log.Info("Enabled KVM hardware acceleration for QEMU instance", "nodeID", node.ID)
+	} else {
+		logger.Log.Info("KVM hardware acceleration not available (/dev/kvm), using TCG software emulation", "nodeID", node.ID)
+	}
+
 	// Add managed port netdev sockets for ALL node ports
 	for i, port := range node.Ports {
 		portKey := fmt.Sprintf("%s:%s", node.ID, port.ID)
@@ -307,4 +314,13 @@ func (m *Manager) IsNodeRunning(nodeID string) bool {
 	defer m.mu.Unlock()
 	inst, exists := m.instances[nodeID]
 	return exists && inst.IsRunning
+}
+
+func isKVMAvailable() bool {
+	f, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
 }
