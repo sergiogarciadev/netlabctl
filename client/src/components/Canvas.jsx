@@ -1,4 +1,5 @@
 import { Canvas as FabricCanvas, Group, Line, loadSVGFromString, Rect } from "fabric";
+import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchTemplateDrawing } from "../services/api";
 import { DebugPanel } from "./DebugPanel";
@@ -25,8 +26,15 @@ export function Canvas({
     tempLine: null,
   });
 
-  // Isolated local debug info state - does NOT re-render parent App!
+  const panStateRef = useRef({
+    isPanning: false,
+    lastPosX: 0,
+    lastPosY: 0,
+  });
+
+  // Isolated local debug info state
   const [debugInfo, setDebugInfo] = useState(null);
+  const [zoomLevel, setZoomLevel] = useState(100);
 
   const cancelWiring = useCallback(() => {
     const canvas = fabricCanvasRef.current;
@@ -37,6 +45,31 @@ export function Canvas({
     wiringStateRef.current = { active: false, srcNodeId: null, srcPortId: null, tempLine: null };
     if (canvas && !canvas.isDisposed) canvas.requestRenderAll();
   }, []);
+
+  const handleZoomIn = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || canvas.isDisposed) return;
+    let zoom = canvas.getZoom() * 1.2;
+    if (zoom > 4) zoom = 4;
+    canvas.zoomToPoint({ x: canvas.width / 2, y: canvas.height / 2 }, zoom);
+    setZoomLevel(Math.round(zoom * 100));
+  };
+
+  const handleZoomOut = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || canvas.isDisposed) return;
+    let zoom = canvas.getZoom() / 1.2;
+    if (zoom < 0.25) zoom = 0.25;
+    canvas.zoomToPoint({ x: canvas.width / 2, y: canvas.height / 2 }, zoom);
+    setZoomLevel(Math.round(zoom * 100));
+  };
+
+  const handleResetZoom = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || canvas.isDisposed) return;
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    setZoomLevel(100);
+  };
 
   // Initialize Fabric Canvas
   useEffect(() => {
@@ -83,9 +116,36 @@ export function Canvas({
     };
     window.addEventListener("keydown", handleKeyDown);
 
-    // Mouse move handler - updates ONLY local Canvas debug HUD without re-rendering parent App!
+    // Mouse wheel zoom handler
+    canvas.on("mouse:wheel", (opt) => {
+      const delta = opt.e.deltaY;
+      let zoom = canvas.getZoom();
+      zoom *= 0.999 ** delta;
+      if (zoom > 4) zoom = 4;
+      if (zoom < 0.25) zoom = 0.25;
+
+      canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+      setZoomLevel(Math.round(zoom * 100));
+
+      opt.e.preventDefault();
+      opt.e.stopPropagation();
+    });
+
+    // Mouse move handler (handles pan & wire rubberband & HUD)
     canvas.on("mouse:move", (opt) => {
       const pointer = canvas.getScenePoint(opt.e);
+      const evt = opt.e;
+
+      if (panStateRef.current.isPanning) {
+        const vpt = canvas.viewportTransform;
+        vpt[4] += evt.clientX - panStateRef.current.lastPosX;
+        vpt[5] += evt.clientY - panStateRef.current.lastPosY;
+        panStateRef.current.lastPosX = evt.clientX;
+        panStateRef.current.lastPosY = evt.clientY;
+        canvas.requestRenderAll();
+        return;
+      }
+
       const target = opt.target;
       const subTarget = opt.subTarget;
 
@@ -125,8 +185,21 @@ export function Canvas({
       }
     });
 
-    // Mouse down handler for device selection & port wiring
+    // Mouse down handler (handles canvas panning & selection & port wiring)
     canvas.on("mouse:down", (opt) => {
+      const evt = opt.e;
+
+      // Enable canvas panning via Middle Click or Alt/Option Click or Spacebar
+      if (evt.button === 1 || evt.altKey) {
+        panStateRef.current = {
+          isPanning: true,
+          lastPosX: evt.clientX,
+          lastPosY: evt.clientY,
+        };
+        canvas.selection = false;
+        return;
+      }
+
       const target = opt.target;
       const subTarget = opt.subTarget;
       const pointer = canvas.getScenePoint(opt.e);
@@ -197,6 +270,14 @@ export function Canvas({
       }
     });
 
+    // Mouse up handler
+    canvas.on("mouse:up", () => {
+      if (panStateRef.current.isPanning) {
+        panStateRef.current.isPanning = false;
+        canvas.selection = activeTool === "select";
+      }
+    });
+
     return () => {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleKeyDown);
@@ -206,7 +287,7 @@ export function Canvas({
     };
   }, [cancelWiring, onSelectNode, onAddWire, onDeleteWire, onDeleteNode, activeTool]);
 
-  // Sync Nodes and Wires on Canvas - ONLY runs when nodes or wires length / references change
+  // Sync Nodes and Wires on Canvas
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas || canvas.isDisposed) return;
@@ -239,7 +320,6 @@ export function Canvas({
         const nodeGroup = await createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool);
         if (isCancelled || canvas.isDisposed) return;
 
-        // Smooth 60FPS dragging - updates line positions in-place without canvas clearing
         nodeGroup.on("moving", () => {
           node.x = nodeGroup.left;
           node.y = nodeGroup.top;
@@ -266,6 +346,66 @@ export function Canvas({
   return (
     <div className="canvas-wrapper" ref={containerRef}>
       <canvas ref={canvasRef} id="netlab-canvas" />
+
+      {/* Floating Zoom HUD Controls */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: "16px",
+          right: "16px",
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          background: "rgba(15, 23, 42, 0.9)",
+          backdropFilter: "blur(10px)",
+          border: "1px solid var(--border-color)",
+          borderRadius: "8px",
+          padding: "6px 10px",
+          zIndex: 80,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+        }}
+      >
+        <button
+          type="button"
+          className="btn"
+          style={{ padding: "4px 8px" }}
+          onClick={handleZoomOut}
+          title="Zoom Out"
+        >
+          <ZoomOut size={16} />
+        </button>
+        <span
+          style={{
+            fontSize: "0.8rem",
+            fontWeight: 600,
+            fontFamily: "var(--font-mono)",
+            color: "var(--text-main)",
+            minWidth: "45px",
+            textAlign: "center",
+          }}
+        >
+          {zoomLevel}%
+        </span>
+        <button
+          type="button"
+          className="btn"
+          style={{ padding: "4px 8px" }}
+          onClick={handleZoomIn}
+          title="Zoom In"
+        >
+          <ZoomIn size={16} />
+        </button>
+        <button
+          type="button"
+          className="btn"
+          style={{ padding: "4px 8px", marginLeft: "4px" }}
+          onClick={handleResetZoom}
+          title="Reset Zoom & Pan (100%)"
+        >
+          <Maximize2 size={16} />
+        </button>
+      </div>
+
       <DebugPanel debugInfo={debugInfo} />
     </div>
   );
