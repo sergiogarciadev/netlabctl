@@ -210,12 +210,16 @@ export function Canvas({
 
       const fwdCount = stat.srcToDst100ms || (stat.count > 0 ? stat.count : 0);
       if (fwdCount > 0) {
-        triggerCircleAnimation(canvas, points, fwdCount, false);
+        setTimeout(() => {
+          triggerCircleAnimation(fabricCanvasRef.current, points, fwdCount, false);
+        }, 0);
       }
 
       const revCount = stat.dstToSrc100ms || 0;
       if (revCount > 0) {
-        triggerCircleAnimation(canvas, points, revCount, true);
+        setTimeout(() => {
+          triggerCircleAnimation(fabricCanvasRef.current, points, revCount, true);
+        }, 0);
       }
     });
   }, [wireStats, triggerCircleAnimation]);

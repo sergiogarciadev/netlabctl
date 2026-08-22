@@ -32,6 +32,10 @@
   - In **Wire Tool Mode**: Cursor switches to `crosshair`. Device groups are non-draggable (`selectable: false`). Clicking ports or near port anchors connects wires.
 - **SubTarget Check**: Enable `subTargetCheck: true` on parent `fabric.Group` and recursively tag child elements with `portId` and cursor hints so sub-element clicks hit port targets reliably.
 
+### Fabric.js Object Animations inside React Effects
+- **React Commit Phase vs. Fabric Render Queue**: Triggering Fabric.js canvas object additions/animations (`canvas.add()`, `canvas.bringObjectToFront()`, `requestAnimationFrame()`) synchronously inside a React `useEffect` hook triggered by state updates causes Fabric's `requestRenderAll()` queue to be overridden or cancelled during React's commit phase DOM flush.
+  - *Lesson*: Defer Fabric object additions and animation triggers using `setTimeout(() => triggerCircleAnimation(fabricCanvasRef.current, ...), 0)` to push canvas mutations into the macro-task queue *after* React has completed its commit phase and DOM flush.
+
 ---
 
 ## 3. Machine Properties & Sidebar Guidelines
