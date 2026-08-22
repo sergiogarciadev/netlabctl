@@ -125,6 +125,14 @@ export class WSClient {
     this.send("stop_node", { projectId, nodeId });
   }
 
+  setWireCondition(wireId, conditions) {
+    this.send("set_wire_condition", { wireId, conditions });
+  }
+
+  enableTZSP(wireId, targetUdp) {
+    this.send("enable_tzsp", { wireId, targetUdp });
+  }
+
   sendTerminalInput(projectId, nodeId, data) {
     this.send("terminal_input", { projectId, nodeId, data });
   }

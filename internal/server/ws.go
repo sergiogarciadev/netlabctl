@@ -251,10 +251,32 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 			_ = c.hub.qemuMgr.StopNode(payload.NodeID)
 		}
 
+	case model.MsgTypeSetWireCondition:
+		var payload model.SetWireConditionPayload
+		if err := json.Unmarshal(msg.Data, &payload); err == nil {
+			conds := payload.GetConditions()
+			logger.Log.Info("WS Command: Set wire condition", "wire", payload.WireID, "delayMs", conds.DelayMs, "jitterMs", conds.JitterMs, "lossPercent", conds.LossPercent)
+			c.hub.netMgr.UpdateWireCondition(payload.WireID, conds)
+
+			top, err := c.hub.storage.GetProject(c.projectID)
+			if err == nil {
+				for i := range top.Wires {
+					if top.Wires[i].ID == payload.WireID {
+						top.Wires[i].Conditions = conds
+						_ = c.hub.storage.SaveProject(top)
+						c.hub.BroadcastToProject(c.projectID, model.MsgTypeProjectState, top)
+						break
+					}
+				}
+			}
+		}
+
 	case model.MsgTypeEnableTZSP:
 		var payload model.EnableTZSPPayload
 		if err := json.Unmarshal(msg.Data, &payload); err == nil {
 			logger.Log.Info("WS Command: Enable TZSP", "wire", payload.WireID, "target", payload.TargetUDP)
+			c.hub.netMgr.UpdateWireTZSP(payload.WireID, payload.TargetUDP)
+
 			top, err := c.hub.storage.GetProject(c.projectID)
 			if err == nil {
 				for i := range top.Wires {

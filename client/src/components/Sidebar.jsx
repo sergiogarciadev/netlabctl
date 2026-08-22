@@ -1,4 +1,5 @@
 import {
+  Activity,
   Check,
   Cpu,
   Edit2,
@@ -564,6 +565,126 @@ export function Sidebar({
                     </button>
                   )}
                 </div>
+
+                {/* Per-Wire Network Conditions (Delay, Jitter, Loss) */}
+                {isConnected && wire && (
+                  <div
+                    style={{
+                      marginTop: "8px",
+                      paddingTop: "6px",
+                      borderTop: "1px dashed var(--border-color)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "6px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                        color: "var(--text-main)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <Activity size={12} style={{ color: "#3b82f6" }} /> Link Conditions (Latency &
+                      Loss):
+                    </div>
+                    <div
+                      style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}
+                    >
+                      <div>
+                        <label style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                          Delay (ms):
+                          <input
+                            type="number"
+                            min="0"
+                            max="5000"
+                            value={wire.conditions?.delayMs ?? 0}
+                            onChange={(e) => {
+                              const delayMs = Math.max(0, Number(e.target.value) || 0);
+                              onUpdateWire({
+                                ...wire,
+                                conditions: { ...(wire.conditions || {}), delayMs },
+                              });
+                            }}
+                            style={{
+                              width: "100%",
+                              background: "var(--bg-dark)",
+                              border: "1px solid var(--border-color)",
+                              color: "var(--text-main)",
+                              borderRadius: "4px",
+                              padding: "2px 4px",
+                              fontSize: "0.75rem",
+                              marginTop: "2px",
+                            }}
+                          />
+                        </label>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                          Jitter (ms):
+                          <input
+                            type="number"
+                            min="0"
+                            max="1000"
+                            value={wire.conditions?.jitterMs ?? 0}
+                            onChange={(e) => {
+                              const jitterMs = Math.max(0, Number(e.target.value) || 0);
+                              onUpdateWire({
+                                ...wire,
+                                conditions: { ...(wire.conditions || {}), jitterMs },
+                              });
+                            }}
+                            style={{
+                              width: "100%",
+                              background: "var(--bg-dark)",
+                              border: "1px solid var(--border-color)",
+                              color: "var(--text-main)",
+                              borderRadius: "4px",
+                              padding: "2px 4px",
+                              fontSize: "0.75rem",
+                              marginTop: "2px",
+                            }}
+                          />
+                        </label>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                          Loss (%):
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.5"
+                            value={wire.conditions?.lossPercent ?? 0}
+                            onChange={(e) => {
+                              const lossPercent = Math.max(
+                                0,
+                                Math.min(100, Number(e.target.value) || 0),
+                              );
+                              onUpdateWire({
+                                ...wire,
+                                conditions: { ...(wire.conditions || {}), lossPercent },
+                              });
+                            }}
+                            style={{
+                              width: "100%",
+                              background: "var(--bg-dark)",
+                              border: "1px solid var(--border-color)",
+                              color: "var(--text-main)",
+                              borderRadius: "4px",
+                              padding: "2px 4px",
+                              fontSize: "0.75rem",
+                              marginTop: "2px",
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

@@ -241,6 +241,13 @@ export function App() {
     );
     const updatedProject = { ...project, wires: updatedWires };
     commitProjectUpdate(updatedProject, true);
+
+    if (updatedWire.conditions) {
+      wsClientRef.current?.setWireCondition(updatedWire.id, updatedWire.conditions);
+    }
+    if (updatedWire.tzspTarget !== undefined) {
+      wsClientRef.current?.enableTZSP(updatedWire.id, updatedWire.tzspTarget);
+    }
   };
 
   const handleUpdateNode = async (updatedNode) => {

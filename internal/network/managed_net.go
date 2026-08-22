@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -162,6 +163,28 @@ func (nm *NetworkManager) AddWireBridge(wire model.Wire) error {
 	return nil
 }
 
+// UpdateWireCondition dynamically updates delay, jitter, and loss parameters on an active wire bridge.
+func (nm *NetworkManager) UpdateWireCondition(wireID string, cond model.NetworkCondition) {
+	nm.mu.Lock()
+	defer nm.mu.Unlock()
+
+	if bridge, exists := nm.bridges[wireID]; exists {
+		bridge.Wire.Conditions = cond
+		logger.Log.Info("Updated wire network conditions", "wireID", wireID, "delayMs", cond.DelayMs, "jitterMs", cond.JitterMs, "lossPercent", cond.LossPercent)
+	}
+}
+
+// UpdateWireTZSP dynamically updates or disables TZSP UDP frame mirroring on an active wire bridge.
+func (nm *NetworkManager) UpdateWireTZSP(wireID string, tzspTarget string) {
+	nm.mu.Lock()
+	defer nm.mu.Unlock()
+
+	if bridge, exists := nm.bridges[wireID]; exists {
+		bridge.Wire.TZSPTarget = tzspTarget
+		logger.Log.Info("Updated wire TZSP target", "wireID", wireID, "target", tzspTarget)
+	}
+}
+
 func (b *WireBridge) runBridge() {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
@@ -228,6 +251,29 @@ func (b *WireBridge) forwardStream(src, dst net.Conn) {
 			return
 		}
 
+		// 1. Packet Loss Impairment
+		lossPct := b.Wire.Conditions.LossPercent
+		if lossPct > 0 {
+			if rand.Float64()*100.0 < lossPct {
+				logger.Log.Debug("Dropped packet due to network condition loss", "wireID", b.Wire.ID, "lossPercent", lossPct)
+				continue // Drop frame
+			}
+		}
+
+		// 2. Delay & Jitter Impairment
+		delayMs := b.Wire.Conditions.DelayMs
+		if b.Wire.Conditions.JitterMs > 0 {
+			jit := rand.Intn(2*b.Wire.Conditions.JitterMs+1) - b.Wire.Conditions.JitterMs
+			delayMs += jit
+			if delayMs < 0 {
+				delayMs = 0
+			}
+		}
+
+		if delayMs > 0 {
+			time.Sleep(time.Duration(delayMs) * time.Millisecond)
+		}
+
 		atomic.AddInt64(&b.bytesCount, int64(pktLen))
 		atomic.AddInt64(&b.packetsCount, 1)
 
@@ -263,6 +309,7 @@ func (b *WireBridge) sendTZSPFrame(payload []byte) {
 	}
 	defer conn.Close()
 
+	// TZSP Header: Version 1 (0x01), Type Rx (0x00), Protocol Ethernet (0x0001), Tag End (0x01)
 	tzspHeader := []byte{0x01, 0x00, 0x00, 0x01, 0x01}
 	packet := append(tzspHeader, payload...)
 	_, _ = conn.Write(packet)

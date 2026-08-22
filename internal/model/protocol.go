@@ -50,11 +50,24 @@ type TerminalInputPayload struct {
 
 // SetWireConditionPayload payload for updating network conditions on a wire.
 type SetWireConditionPayload struct {
-	ProjectID   string  `json:"projectId"`
-	WireID      string  `json:"wireId"`
-	DelayMs     int     `json:"delayMs"`
-	JitterMs    int     `json:"jitterMs"`
-	LossPercent float64 `json:"lossPercent"`
+	ProjectID   string           `json:"projectId"`
+	WireID      string           `json:"wireId"`
+	Conditions  NetworkCondition `json:"conditions,omitempty"`
+	DelayMs     int              `json:"delayMs,omitempty"`
+	JitterMs    int              `json:"jitterMs,omitempty"`
+	LossPercent float64          `json:"lossPercent,omitempty"`
+}
+
+// GetConditions returns normalized NetworkCondition struct from payload.
+func (s *SetWireConditionPayload) GetConditions() NetworkCondition {
+	if s.Conditions.DelayMs > 0 || s.Conditions.JitterMs > 0 || s.Conditions.LossPercent > 0 {
+		return s.Conditions
+	}
+	return NetworkCondition{
+		DelayMs:     s.DelayMs,
+		JitterMs:    s.JitterMs,
+		LossPercent: s.LossPercent,
+	}
 }
 
 // EnableTZSPPayload payload for configuring TZSP forwarding.
