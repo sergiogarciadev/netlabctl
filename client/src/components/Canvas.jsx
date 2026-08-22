@@ -144,7 +144,7 @@ export function Canvas({
       opt.e.stopPropagation();
     });
 
-    // Mouse move handler (handles pan & bottom-leaving non-crossing wire rubberband & HUD)
+    // Mouse move handler (handles pan & parallel non-crossing wire rubberband & HUD)
     canvas.on("mouse:move", (opt) => {
       const pointer = canvas.getScenePoint(opt.e);
       const evt = opt.e;
@@ -464,7 +464,7 @@ export function Canvas({
   );
 }
 
-// Manhattan 90-degree orthogonal polyline point calculation: All wires leave devices from the bottom and route around devices without crossing
+// Manhattan 90-degree orthogonal polyline point calculation with STRICT parallel channel separation for all segments
 function calculateNonCrossingOrthogonalPoints(
   p1,
   p2,
@@ -485,51 +485,59 @@ function calculateNonCrossingOrthogonalPoints(
 
   const p1Num = parsePortNum(srcPortId);
   const p2Num = parsePortNum(dstPortId);
-  const channelShift = (p1Num - 1) * 14 - 18 + (p2Num - 1) * 2;
 
-  // Margin to ensure wires drop strictly below device bottom boundaries
-  const margin = 25;
-  const srcBottom = (srcNodeGroup ? srcNodeGroup.top + (srcNodeGroup.height || 50) : y1) + margin;
-  const dstBottom = (dstNodeGroup ? dstNodeGroup.top + (dstNodeGroup.height || 50) : y2) + margin;
+  // Each port gets its own parallel track offset (16px spacing between parallel tracks)
+  const trackGap = 16;
+  const port1Offset = (p1Num - 1) * trackGap;
+  const port2Offset = (p2Num - 1) * trackGap;
 
-  const b1 = Math.max(y1 + margin, srcBottom);
-  const b2 = Math.max(y2 + margin, dstBottom);
+  const baseMargin = 20;
+  const srcBottom =
+    (srcNodeGroup ? srcNodeGroup.top + (srcNodeGroup.height || 50) : y1) + baseMargin;
+  const dstBottom =
+    (dstNodeGroup ? dstNodeGroup.top + (dstNodeGroup.height || 50) : y2) + baseMargin;
+
+  // Individual exit and entry Y offsets per port
+  const b1 = Math.max(y1 + baseMargin, srcBottom) + port1Offset;
+  const b2 = Math.max(y2 + baseMargin, dstBottom) + port2Offset;
 
   const srcLeft = srcNodeGroup ? srcNodeGroup.left - 15 : x1 - 65;
   const srcRight = srcNodeGroup ? srcNodeGroup.left + (srcNodeGroup.width || 120) + 15 : x1 + 65;
   const dstLeft = dstNodeGroup ? dstNodeGroup.left - 15 : x2 - 65;
   const dstRight = dstNodeGroup ? dstNodeGroup.left + (dstNodeGroup.width || 120) + 15 : x2 + 65;
 
-  // Route requires side bypass if destination is above source or if direct route crosses over a device
   const needsSideBypass = y2 < y1 - 15 || Math.abs(x1 - x2) < 30;
 
   if (needsSideBypass) {
     const useRightSide = x2 >= x1;
+    // Individual vertical bypass corridor X per port
     const bypassX = useRightSide
-      ? Math.max(srcRight, dstRight) + 25 + Math.abs(channelShift)
-      : Math.min(srcLeft, dstLeft) - 25 - Math.abs(channelShift);
+      ? Math.max(srcRight, dstRight) + 20 + port1Offset
+      : Math.min(srcLeft, dstLeft) - 20 - port1Offset;
 
     return [
       { x: x1, y: y1 },
       { x: x1, y: b1 },
       { x: bypassX, y: b1 },
-      { x: bypassX, y: b2 + channelShift },
-      { x: x2, y: b2 + channelShift },
+      { x: bypassX, y: b2 },
+      { x: x2, y: b2 },
       { x: x2, y: y2 },
     ];
   }
 
-  // Direct bottom corridor routing
-  const midY = Math.max(b1, b2) + channelShift;
-
+  // Direct bottom channel routing with distinct Y levels
   return [
     { x: x1, y: y1 },
     { x: x1, y: b1 },
-    { x: x1, y: midY },
-    { x: x2, y: midY },
+    { x: bypassXOffset(x1, x2, port1Offset), y: b1 },
+    { x: bypassXOffset(x1, x2, port1Offset), y: b2 },
     { x: x2, y: b2 },
     { x: x2, y: y2 },
   ];
+}
+
+function bypassXOffset(x1, x2, offset) {
+  return (x1 + x2) / 2 + offset;
 }
 
 function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 45) {
