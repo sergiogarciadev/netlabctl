@@ -2,22 +2,25 @@ package qemu
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"netlabctl/internal/logger"
 	"netlabctl/internal/model"
 )
 
 type NodeInstance struct {
-	NodeID         string
-	ProjectID      string
-	Cmd            *exec.Cmd
-	Dir            string
-	SerialSockPath string
-	IsRunning      bool
+	NodeID          string
+	ProjectID       string
+	Cmd             *exec.Cmd
+	Dir             string
+	SerialSockPath  string
+	MonitorSockPath string
+	IsRunning       bool
 }
 
 type Manager struct {
@@ -91,8 +94,8 @@ func (m *Manager) PrepareNodeDisk(projectID string, node *model.Node, tmplDir st
 	return diskPath, nil
 }
 
-// StartNode launches a QEMU process for the specified node.
-func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, tmpl *model.MachineTemplate, portSockets map[string]int) (*NodeInstance, error) {
+// StartNode launches a QEMU process for the specified node with managed network sockets and monitor socket.
+func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, tmpl *model.MachineTemplate, portAddrs map[string]string) (*NodeInstance, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -107,7 +110,10 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 
 	nDir := m.NodeDir(projectID, node.ID)
 	serialSock := filepath.Join(nDir, "serial.sock")
-	_ = os.Remove(serialSock) // Remove stale socket
+	monitorSock := filepath.Join(nDir, "monitor.sock")
+
+	_ = os.Remove(serialSock)  // Remove stale socket
+	_ = os.Remove(monitorSock) // Remove stale socket
 
 	sysBinary := "qemu-system-x86_64"
 	if tmpl != nil && tmpl.System != "" {
@@ -118,11 +124,12 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 	if err != nil {
 		logger.Log.Warn("QEMU binary not found; simulating node startup", "binary", sysBinary, "nodeID", node.ID)
 		inst := &NodeInstance{
-			NodeID:         node.ID,
-			ProjectID:      projectID,
-			Dir:            nDir,
-			SerialSockPath: serialSock,
-			IsRunning:      true,
+			NodeID:          node.ID,
+			ProjectID:       projectID,
+			Dir:             nDir,
+			SerialSockPath:  serialSock,
+			MonitorSockPath: monitorSock,
+			IsRunning:       true,
 		}
 		m.instances[node.ID] = inst
 		return inst, nil
@@ -151,23 +158,18 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		"-drive", fmt.Sprintf("file=%s,format=qcow2,if=virtio", diskPath),
 		"-nographic",
 		"-serial", fmt.Sprintf("unix:%s,server,nowait", serialSock),
+		"-monitor", fmt.Sprintf("unix:%s,server,nowait", monitorSock),
 	}
 
-	// Add port netdevs
+	// Add managed port netdev sockets for ALL node ports
 	for i, port := range node.Ports {
-		targetPort, isConnected := portSockets[port.ID]
+		targetAddr, ok := portAddrs[port.ID]
 		netdevID := fmt.Sprintf("net%d", i)
 		devID := fmt.Sprintf("eth%d", i)
 
-		if isConnected {
+		if ok && targetAddr != "" {
 			args = append(args,
-				"-netdev", fmt.Sprintf("socket,id=%s,connect=127.0.0.1:%d", netdevID, targetPort),
-				"-device", fmt.Sprintf("e1000,netdev=%s,mac=%s,id=%s", netdevID, port.MAC, devID),
-			)
-		} else {
-			// Unconnected port - use distinct user subnet per port to prevent slirp collisions
-			args = append(args,
-				"-netdev", fmt.Sprintf("user,id=%s,net=10.0.%d.0/24", netdevID, (i+1)%250),
+				"-netdev", fmt.Sprintf("socket,id=%s,connect=%s", netdevID, targetAddr),
 				"-device", fmt.Sprintf("e1000,netdev=%s,mac=%s,id=%s", netdevID, port.MAC, devID),
 			)
 		}
@@ -197,12 +199,13 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 	}
 
 	inst := &NodeInstance{
-		NodeID:         node.ID,
-		ProjectID:      projectID,
-		Cmd:            cmd,
-		Dir:            nDir,
-		SerialSockPath: serialSock,
-		IsRunning:      true,
+		NodeID:          node.ID,
+		ProjectID:       projectID,
+		Cmd:             cmd,
+		Dir:             nDir,
+		SerialSockPath:  serialSock,
+		MonitorSockPath: monitorSock,
+		IsRunning:       true,
 	}
 
 	go func() {
@@ -224,6 +227,32 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 	m.instances[node.ID] = inst
 	logger.Log.Info("Started QEMU instance for node", "nodeID", node.ID, "pid", cmd.Process.Pid)
 	return inst, nil
+}
+
+// SetPortLinkStatus connects to the node's QEMU monitor socket and sets link status on/off.
+func (m *Manager) SetPortLinkStatus(projectID, nodeID, deviceID string, linkOn bool) error {
+	nDir := m.NodeDir(projectID, nodeID)
+	monitorSock := filepath.Join(nDir, "monitor.sock")
+
+	conn, err := net.DialTimeout("unix", monitorSock, 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to dial QEMU monitor socket for node %s: %w", nodeID, err)
+	}
+	defer conn.Close()
+
+	stateStr := "off"
+	if linkOn {
+		stateStr = "on"
+	}
+
+	cmdStr := fmt.Sprintf("set_link %s %s\n", deviceID, stateStr)
+	_, err = conn.Write([]byte(cmdStr))
+	if err != nil {
+		return fmt.Errorf("failed to send set_link to monitor for %s: %w", deviceID, err)
+	}
+
+	logger.Log.Info("Updated QEMU monitor link status", "nodeID", nodeID, "deviceID", deviceID, "linkOn", linkOn)
+	return nil
 }
 
 // StopNode stops the QEMU process for a given node.

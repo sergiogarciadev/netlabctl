@@ -277,31 +277,60 @@ func (h *WSHub) startProjectSimulation(projectID string) {
 		return
 	}
 
-	basePort := 10000
-	portMap := make(map[string]int)
+	portAddrs := make(map[string]string) // portID -> "127.0.N.P:PORT"
+	connectedPorts := make(map[string]bool)
 
-	// 1. Setup Network Wire Proxies
-	for i, wire := range top.Wires {
-		listenPort := basePort + i*2
-		connectPort := basePort + i*2 + 1
+	// Identify all connected ports from wires
+	for _, wire := range top.Wires {
+		connectedPorts[wire.SrcPortID] = true
+		connectedPorts[wire.DstPortID] = true
+	}
 
-		portMap[wire.SrcPortID] = listenPort
-		portMap[wire.DstPortID] = connectPort
+	// 1. Register Managed Network TCP Listeners for ALL node ports
+	for nIdx, node := range top.Nodes {
+		nodeNum := nIdx + 1
+		for pIdx, port := range node.Ports {
+			portNum := pIdx + 1
+			ip := fmt.Sprintf("127.0.%d.%d", nodeNum, portNum)
+			tcpPort := 10000 + nodeNum*20 + portNum
 
-		_, err := h.netMgr.StartWireProxy(wire, listenPort, connectPort)
-		if err != nil {
-			logger.Log.Error("Failed to start wire proxy", "wireID", wire.ID, "error", err)
+			addrStr := fmt.Sprintf("%s:%d", ip, tcpPort)
+			portAddrs[port.ID] = addrStr
+
+			_, err := h.netMgr.RegisterPortListener(node.ID, port.ID, ip, tcpPort)
+			if err != nil {
+				logger.Log.Error("Failed to register managed port listener", "nodeID", node.ID, "portID", port.ID, "addr", addrStr, "error", err)
+			}
 		}
 	}
 
-	// 2. Launch QEMU Node Instances
+	// 2. Establish Wire Bridges for connected port pairs
+	for _, wire := range top.Wires {
+		if err := h.netMgr.AddWireBridge(wire); err != nil {
+			logger.Log.Error("Failed to add wire bridge", "wireID", wire.ID, "error", err)
+		}
+	}
+
+	// 3. Launch QEMU Node Instances (connected via socket netdevs to managed listeners)
 	for _, node := range top.Nodes {
 		tmpl, tmplDir, _ := h.storage.GetTemplate(node.TemplateID)
-		_, err := h.qemuMgr.StartNode(projectID, &node, tmplDir, tmpl, portMap)
+		_, err := h.qemuMgr.StartNode(projectID, &node, tmplDir, tmpl, portAddrs)
 		if err != nil {
 			logger.Log.Error("Failed to start node instance", "nodeID", node.ID, "error", err)
 		}
 	}
+
+	// 4. Update QEMU Monitor link status for connected vs disconnected ports
+	go func() {
+		time.Sleep(1 * time.Second) // Give QEMU instances 1s to open monitor sockets
+		for _, node := range top.Nodes {
+			for i, port := range node.Ports {
+				devID := fmt.Sprintf("eth%d", i)
+				isConn := connectedPorts[port.ID]
+				_ = h.qemuMgr.SetPortLinkStatus(projectID, node.ID, devID, isConn)
+			}
+		}
+	}()
 
 	h.BroadcastToProject(projectID, "simulation_started", map[string]string{"status": "running"})
 }

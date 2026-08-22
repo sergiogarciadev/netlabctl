@@ -19,30 +19,37 @@ type WireProxyStats struct {
 	TZSPActive   bool   `json:"tzspActive"`
 }
 
-type WireProxy struct {
+type ManagedPortSocket struct {
+	NodeID   string
+	PortID   string
+	IP       string
+	Port     int
+	listener net.Listener
+	conn     net.Conn
+	mu       sync.Mutex
+}
+
+type WireBridge struct {
 	Wire         model.Wire
-	PortA        int
-	PortB        int
-	listenerA    net.Listener
-	listenerB    net.Listener
-	connA        net.Conn
-	connB        net.Conn
+	PortA        *ManagedPortSocket
+	PortB        *ManagedPortSocket
 	packetsCount int64
 	bytesCount   int64
 	last100msPkt int64
 	lastPktCount int64
 	stopChan     chan struct{}
-	mu           sync.Mutex
 }
 
 type NetworkManager struct {
-	mu      sync.Mutex
-	proxies map[string]*WireProxy
+	mu          sync.Mutex
+	portSockets map[string]*ManagedPortSocket // portID -> socket
+	bridges     map[string]*WireBridge        // wireID -> bridge
 }
 
 func NewNetworkManager() *NetworkManager {
 	nm := &NetworkManager{
-		proxies: make(map[string]*WireProxy),
+		portSockets: make(map[string]*ManagedPortSocket),
+		bridges:     make(map[string]*WireBridge),
 	}
 
 	// 100ms sliding window packet ticker
@@ -61,97 +68,121 @@ func (nm *NetworkManager) update100msStats() {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
 
-	for _, proxy := range nm.proxies {
-		current := atomic.LoadInt64(&proxy.packetsCount)
-		diff := current - proxy.lastPktCount
+	for _, bridge := range nm.bridges {
+		current := atomic.LoadInt64(&bridge.packetsCount)
+		diff := current - bridge.lastPktCount
 		if diff < 0 {
 			diff = 0
 		}
-		atomic.StoreInt64(&proxy.last100msPkt, diff)
-		proxy.lastPktCount = current
+		atomic.StoreInt64(&bridge.last100msPkt, diff)
+		bridge.lastPktCount = current
 	}
 }
 
-// StartWireProxy establishes two TCP listeners for QEMU socket netdevs and bridges them.
-func (nm *NetworkManager) StartWireProxy(wire model.Wire, portA int, portB int) (*WireProxy, error) {
+// RegisterPortListener creates a unique TCP listener for a node port on 127.0.N.P:PORT.
+func (nm *NetworkManager) RegisterPortListener(nodeID, portID, ip string, port int) (*ManagedPortSocket, error) {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
 
-	if p, exists := nm.proxies[wire.ID]; exists {
-		return p, nil
+	if ps, exists := nm.portSockets[portID]; exists {
+		return ps, nil
 	}
 
-	lA, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", portA))
+	addrStr := fmt.Sprintf("%s:%d", ip, port)
+	listener, err := net.Listen("tcp", addrStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to listen on 127.0.0.1:%d: %w", portA, err)
+		return nil, fmt.Errorf("failed to listen managed port on %s: %w", addrStr, err)
 	}
 
-	lB, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", portB))
-	if err != nil {
-		_ = lA.Close()
-		return nil, fmt.Errorf("failed to listen on 127.0.0.1:%d: %w", portB, err)
+	ps := &ManagedPortSocket{
+		NodeID:   nodeID,
+		PortID:   portID,
+		IP:       ip,
+		Port:     port,
+		listener: listener,
 	}
 
-	proxy := &WireProxy{
-		Wire:      wire,
-		PortA:     portA,
-		PortB:     portB,
-		listenerA: lA,
-		listenerB: lB,
-		stopChan:  make(chan struct{}),
-	}
+	nm.portSockets[portID] = ps
 
-	nm.proxies[wire.ID] = proxy
+	// Accept QEMU connection for this managed port
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			ps.mu.Lock()
+			if ps.conn != nil {
+				_ = ps.conn.Close()
+			}
+			ps.conn = conn
+			ps.mu.Unlock()
+			logger.Log.Info("QEMU connected to managed port socket", "nodeID", nodeID, "portID", portID, "addr", addrStr)
+		}
+	}()
 
-	go proxy.runProxyBridge()
-	logger.Log.Info("Started managed network wire proxy bridge", "wireID", wire.ID, "portA", portA, "portB", portB)
-	return proxy, nil
+	return ps, nil
 }
 
-func (p *WireProxy) runProxyBridge() {
-	// Accept Node A connection in background
-	go func() {
-		cA, err := p.listenerA.Accept()
-		if err == nil {
-			p.mu.Lock()
-			p.connA = cA
-			p.mu.Unlock()
-		}
-	}()
+// AddWireBridge connects two registered managed port sockets.
+func (nm *NetworkManager) AddWireBridge(wire model.Wire) error {
+	nm.mu.Lock()
+	defer nm.mu.Unlock()
 
-	// Accept Node B connection in background
-	go func() {
-		cB, err := p.listenerB.Accept()
-		if err == nil {
-			p.mu.Lock()
-			p.connB = cB
-			p.mu.Unlock()
-		}
-	}()
+	if _, exists := nm.bridges[wire.ID]; exists {
+		return nil
+	}
 
+	psA, okA := nm.portSockets[wire.SrcPortID]
+	psB, okB := nm.portSockets[wire.DstPortID]
+
+	if !okA || !okB {
+		return fmt.Errorf("port sockets not registered for wire %s (src: %s, dst: %s)", wire.ID, wire.SrcPortID, wire.DstPortID)
+	}
+
+	bridge := &WireBridge{
+		Wire:     wire,
+		PortA:    psA,
+		PortB:    psB,
+		stopChan: make(chan struct{}),
+	}
+
+	nm.bridges[wire.ID] = bridge
+
+	go bridge.runBridge()
+	logger.Log.Info("Established managed network wire bridge", "wireID", wire.ID, "srcPort", wire.SrcPortID, "dstPort", wire.DstPortID)
+	return nil
+}
+
+func (b *WireBridge) runBridge() {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
+	var connA, connB net.Conn
+
 	for {
 		select {
-		case <-p.stopChan:
-			p.closeConnections()
+		case <-b.stopChan:
 			return
 		case <-ticker.C:
-			p.mu.Lock()
-			cA := p.connA
-			cB := p.connB
-			p.mu.Unlock()
+			b.PortA.mu.Lock()
+			cA := b.PortA.conn
+			b.PortA.mu.Unlock()
 
-			if cA != nil && cB != nil {
-				p.bridgeConnections(cA, cB)
-				return
+			b.PortB.mu.Lock()
+			cB := b.PortB.conn
+			b.PortB.mu.Unlock()
+
+			if cA != nil && cB != nil && (cA != connA || cB != connB) {
+				connA = cA
+				connB = cB
+				go b.bridgeForwarding(connA, connB)
 			}
 		}
 	}
 }
 
-func (p *WireProxy) bridgeConnections(connA, connB net.Conn) {
+func (b *WireBridge) bridgeForwarding(cA, cB net.Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -160,16 +191,16 @@ func (p *WireProxy) bridgeConnections(connA, connB net.Conn) {
 		defer wg.Done()
 		buf := make([]byte, 4096)
 		for {
-			n, err := connA.Read(buf)
+			n, err := cA.Read(buf)
 			if n > 0 {
-				atomic.AddInt64(&p.bytesCount, int64(n))
-				atomic.AddInt64(&p.packetsCount, 1)
+				atomic.AddInt64(&b.bytesCount, int64(n))
+				atomic.AddInt64(&b.packetsCount, 1)
 
-				if p.Wire.TZSPTarget != "" {
-					p.sendTZSPFrame(buf[:n])
+				if b.Wire.TZSPTarget != "" {
+					b.sendTZSPFrame(buf[:n])
 				}
 
-				_, _ = connB.Write(buf[:n])
+				_, _ = cB.Write(buf[:n])
 			}
 			if err != nil {
 				return
@@ -182,16 +213,16 @@ func (p *WireProxy) bridgeConnections(connA, connB net.Conn) {
 		defer wg.Done()
 		buf := make([]byte, 4096)
 		for {
-			n, err := connB.Read(buf)
+			n, err := cB.Read(buf)
 			if n > 0 {
-				atomic.AddInt64(&p.bytesCount, int64(n))
-				atomic.AddInt64(&p.packetsCount, 1)
+				atomic.AddInt64(&b.bytesCount, int64(n))
+				atomic.AddInt64(&b.packetsCount, 1)
 
-				if p.Wire.TZSPTarget != "" {
-					p.sendTZSPFrame(buf[:n])
+				if b.Wire.TZSPTarget != "" {
+					b.sendTZSPFrame(buf[:n])
 				}
 
-				_, _ = connA.Write(buf[:n])
+				_, _ = cA.Write(buf[:n])
 			}
 			if err != nil {
 				return
@@ -202,31 +233,12 @@ func (p *WireProxy) bridgeConnections(connA, connB net.Conn) {
 	wg.Wait()
 }
 
-func (p *WireProxy) closeConnections() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.listenerA != nil {
-		_ = p.listenerA.Close()
-	}
-	if p.listenerB != nil {
-		_ = p.listenerB.Close()
-	}
-	if p.connA != nil {
-		_ = p.connA.Close()
-	}
-	if p.connB != nil {
-		_ = p.connB.Close()
-	}
-}
-
-// sendTZSPFrame wraps raw Ethernet frame into a TZSP UDP packet.
-func (p *WireProxy) sendTZSPFrame(payload []byte) {
-	if p.Wire.TZSPTarget == "" {
+func (b *WireBridge) sendTZSPFrame(payload []byte) {
+	if b.Wire.TZSPTarget == "" {
 		return
 	}
 
-	udpAddr, err := net.ResolveUDPAddr("udp", p.Wire.TZSPTarget)
+	udpAddr, err := net.ResolveUDPAddr("udp", b.Wire.TZSPTarget)
 	if err != nil {
 		return
 	}
@@ -242,46 +254,44 @@ func (p *WireProxy) sendTZSPFrame(payload []byte) {
 	_, _ = conn.Write(packet)
 }
 
-// StopProxy closes the listeners and proxy connections.
-func (nm *NetworkManager) StopProxy(wireID string) {
+// StopAllProxies closes all managed port listeners and bridges.
+func (nm *NetworkManager) StopAllProxies() {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
 
-	if proxy, exists := nm.proxies[wireID]; exists {
-		close(proxy.stopChan)
-		proxy.closeConnections()
-		delete(nm.proxies, wireID)
-		logger.Log.Info("Stopped network wire proxy", "wireID", wireID)
+	for id, bridge := range nm.bridges {
+		close(bridge.stopChan)
+		delete(nm.bridges, id)
 	}
+
+	for id, ps := range nm.portSockets {
+		ps.mu.Lock()
+		if ps.listener != nil {
+			_ = ps.listener.Close()
+		}
+		if ps.conn != nil {
+			_ = ps.conn.Close()
+		}
+		ps.mu.Unlock()
+		delete(nm.portSockets, id)
+	}
+
+	logger.Log.Info("Stopped all managed network listeners and wire bridges")
 }
 
-// StopAllProxies closes all wire proxies.
-func (nm *NetworkManager) StopAllProxies() {
-	nm.mu.Lock()
-	wires := make([]string, 0, len(nm.proxies))
-	for id := range nm.proxies {
-		wires = append(wires, id)
-	}
-	nm.mu.Unlock()
-
-	for _, id := range wires {
-		nm.StopProxy(id)
-	}
-}
-
-// GetStats returns current 100ms packet statistics for all active wires.
+// GetStats returns current 100ms packet statistics for all active wire bridges.
 func (nm *NetworkManager) GetStats() []WireProxyStats {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
 
-	stats := make([]WireProxyStats, 0, len(nm.proxies))
-	for id, p := range nm.proxies {
+	stats := make([]WireProxyStats, 0, len(nm.bridges))
+	for id, b := range nm.bridges {
 		stats = append(stats, WireProxyStats{
 			WireID:       id,
-			Packets100ms: atomic.LoadInt64(&p.last100msPkt),
-			TotalPackets: atomic.LoadInt64(&p.packetsCount),
-			TotalBytes:   atomic.LoadInt64(&p.bytesCount),
-			TZSPActive:   p.Wire.TZSPTarget != "",
+			Packets100ms: atomic.LoadInt64(&b.last100msPkt),
+			TotalPackets: atomic.LoadInt64(&b.packetsCount),
+			TotalBytes:   atomic.LoadInt64(&b.bytesCount),
+			TZSPActive:   b.Wire.TZSPTarget != "",
 		})
 	}
 	return stats
