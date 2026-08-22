@@ -548,7 +548,13 @@ export function Sidebar({
                   >
                     Driver:
                     <select
-                      value={port.netdevType || "virtio-net-pci"}
+                      value={
+                        port.netdevType === "ethernet" ||
+                        port.netdevType === "managed" ||
+                        !port.netdevType
+                          ? "virtio-net-pci"
+                          : port.netdevType
+                      }
                       onChange={(e) => handlePortDriverChange(port.id, e.target.value)}
                       style={{
                         background: "var(--bg-dark)",

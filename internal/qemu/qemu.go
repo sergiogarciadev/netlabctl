@@ -169,7 +169,7 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		devID := fmt.Sprintf("eth%d", i)
 
 		devDriver := port.NetdevType
-		if devDriver == "" || devDriver == "managed" {
+		if devDriver == "" || devDriver == "managed" || devDriver == "e1000" || devDriver == "ethernet" {
 			devDriver = "virtio-net-pci"
 		}
 

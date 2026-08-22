@@ -64,10 +64,10 @@ func (s *Storage) ensureDefaultTemplates() {
   "memory": 256,
   "smp": 1,
   "ports": [
-    { "id": "device-port-1", "name": "ether1", "type": "ethernet" },
-    { "id": "device-port-2", "name": "ether2", "type": "ethernet" },
-    { "id": "device-port-3", "name": "ether3", "type": "ethernet" },
-    { "id": "device-port-4", "name": "ether4", "type": "ethernet" }
+    { "id": "device-port-1", "name": "ether1", "type": "virtio-net-pci" },
+    { "id": "device-port-2", "name": "ether2", "type": "virtio-net-pci" },
+    { "id": "device-port-3", "name": "ether3", "type": "virtio-net-pci" },
+    { "id": "device-port-4", "name": "ether4", "type": "virtio-net-pci" }
   ]
 }`
 		m4Svg := `<svg width="120" height="50" viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
@@ -97,14 +97,14 @@ func (s *Storage) ensureDefaultTemplates() {
   "memory": 256,
   "smp": 1,
   "ports": [
-    { "id": "device-port-1", "name": "ether1", "type": "ethernet" },
-    { "id": "device-port-2", "name": "ether2", "type": "ethernet" },
-    { "id": "device-port-3", "name": "ether3", "type": "ethernet" },
-    { "id": "device-port-4", "name": "ether4", "type": "ethernet" },
-    { "id": "device-port-5", "name": "ether5", "type": "ethernet" },
-    { "id": "device-port-6", "name": "ether6", "type": "ethernet" },
-    { "id": "device-port-7", "name": "ether7", "type": "ethernet" },
-    { "id": "device-port-8", "name": "ether8", "type": "ethernet" }
+    { "id": "device-port-1", "name": "ether1", "type": "virtio-net-pci" },
+    { "id": "device-port-2", "name": "ether2", "type": "virtio-net-pci" },
+    { "id": "device-port-3", "name": "ether3", "type": "virtio-net-pci" },
+    { "id": "device-port-4", "name": "ether4", "type": "virtio-net-pci" },
+    { "id": "device-port-5", "name": "ether5", "type": "virtio-net-pci" },
+    { "id": "device-port-6", "name": "ether6", "type": "virtio-net-pci" },
+    { "id": "device-port-7", "name": "ether7", "type": "virtio-net-pci" },
+    { "id": "device-port-8", "name": "ether8", "type": "virtio-net-pci" }
   ]
 }`
 		m8Svg := `<svg width="215" height="50" viewBox="0 0 215 50" xmlns="http://www.w3.org/2000/svg">
