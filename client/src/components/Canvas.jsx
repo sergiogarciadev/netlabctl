@@ -1082,20 +1082,51 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
 
   const nodePorts = node.ports || tmpl?.ports || [];
 
+  const statusItems = tmpl?.status || [
+    { id: "status-power", type: "power" },
+    { id: "status-name", type: "name" },
+  ];
+  const powerItem = statusItems.find((s) => s.type === "power" || s.name === "power");
+  const nameItem = statusItems.find((s) => s.type === "name" || s.name === "name");
+
   const processElement = (obj) => {
     const elemId = obj.id || "";
 
-    if (elemId === "status-name" || elemId === "device-name" || elemId.includes("name")) {
-      if (typeof obj.set === "function") {
-        obj.set({ text: node.name });
-      }
+    const isNameElem =
+      (nameItem && elemId === nameItem.id) ||
+      elemId === "status-name" ||
+      elemId === "device-name" ||
+      elemId.includes("name");
+
+    const isPowerElem =
+      (powerItem && elemId === powerItem.id) ||
+      elemId === "status-power" ||
+      elemId === "device-power" ||
+      elemId.includes("power");
+
+    if (isNameElem && typeof obj.set === "function") {
+      obj.set({ text: node.name });
     }
 
-    if (elemId === "status-power" || elemId === "device-power" || elemId.includes("power")) {
-      const isPoweredOn = node.isPoweredOn || false;
-      const powerColor = isPoweredOn ? "#00ff00" : "#ff0000";
-      if (typeof obj.set === "function") {
-        obj.set({ fill: powerColor });
+    if (isPowerElem && typeof obj.set === "function") {
+      const isPoweredOn =
+        node.power === "on" || node.status === "running" || node.isPoweredOn === true;
+      const powerColor = isPoweredOn ? "#22c55e" : "#ef4444";
+
+      obj.set({ fill: powerColor });
+
+      const existingClass = obj.className || obj.class || "";
+      if (isPoweredOn) {
+        if (!existingClass.includes("on")) {
+          const newClass = `${existingClass} on`.trim();
+          obj.set({ className: newClass, class: newClass });
+        }
+      } else {
+        const newClass = existingClass
+          .split(" ")
+          .filter((c) => c !== "on")
+          .join(" ");
+        obj.set({ className: newClass, class: newClass });
       }
     }
 

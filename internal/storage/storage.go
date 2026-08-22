@@ -68,6 +68,10 @@ func (s *Storage) ensureDefaultTemplates() {
     { "id": "device-port-2", "name": "ether2", "type": "managed" },
     { "id": "device-port-3", "name": "ether3", "type": "managed" },
     { "id": "device-port-4", "name": "ether4", "type": "managed" }
+  ],
+  "status": [
+    { "id": "status-power", "type": "power" },
+    { "id": "status-name", "type": "name" }
   ]
 }`
 		m4Svg := `<svg width="120" height="50" viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
@@ -105,6 +109,10 @@ func (s *Storage) ensureDefaultTemplates() {
     { "id": "device-port-6", "name": "ether6", "type": "managed" },
     { "id": "device-port-7", "name": "ether7", "type": "managed" },
     { "id": "device-port-8", "name": "ether8", "type": "managed" }
+  ],
+  "status": [
+    { "id": "status-power", "type": "power" },
+    { "id": "status-name", "type": "name" }
   ]
 }`
 		m8Svg := `<svg width="215" height="50" viewBox="0 0 215 50" xmlns="http://www.w3.org/2000/svg">
