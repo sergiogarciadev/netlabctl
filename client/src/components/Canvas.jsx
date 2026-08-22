@@ -1,4 +1,4 @@
-import { Canvas as FabricCanvas, Group, Line, loadSVGFromString, Rect } from "fabric";
+import { Canvas as FabricCanvas, Group, Line, loadSVGFromString, Rect, util } from "fabric";
 import { useCallback, useEffect, useRef } from "react";
 import { fetchTemplateDrawing } from "../services/api";
 
@@ -26,12 +26,12 @@ export function Canvas({
 
   const cancelWiring = useCallback(() => {
     const canvas = fabricCanvasRef.current;
-    if (wiringStateRef.current.tempLine && canvas) {
+    if (wiringStateRef.current.tempLine && canvas && !canvas.isDisposed) {
       canvas.remove(wiringStateRef.current.tempLine);
     }
     console.log("[NETLAB-WIRE-DEBUG] Wiring canceled/reset.");
     wiringStateRef.current = { active: false, srcNodeId: null, srcPortId: null, tempLine: null };
-    if (canvas) canvas.requestRenderAll();
+    if (canvas && !canvas.isDisposed) canvas.requestRenderAll();
   }, []);
 
   // Initialize Fabric Canvas
@@ -54,7 +54,7 @@ export function Canvas({
     fabricCanvasRef.current = canvas;
 
     const handleResize = () => {
-      if (containerRef.current && fabricCanvasRef.current) {
+      if (containerRef.current && fabricCanvasRef.current && !fabricCanvasRef.current.isDisposed) {
         fabricCanvasRef.current.setDimensions({
           width: containerRef.current.clientWidth,
           height: containerRef.current.clientHeight,
@@ -96,13 +96,15 @@ export function Canvas({
       });
 
       if (target?.isNodeGroup) {
-        let clickedPortId = subTarget?.portId || subTarget?.group?.portId;
+        let clickedPortId = extractPortIdFromSubTarget(subTarget, target.nodeData);
         let portAbsPos = null;
 
         if (clickedPortId) {
           portAbsPos = target.getPortAbsPosition(clickedPortId);
-        } else {
-          // Check proximity to any port anchor
+        }
+
+        // If subTarget didn't resolve portId, test proximity to port anchors
+        if (!clickedPortId || !portAbsPos) {
           const nearPort = findClosestPortInNode(target, pointer.x, pointer.y);
           if (nearPort) {
             clickedPortId = nearPort.portId;
@@ -199,15 +201,18 @@ export function Canvas({
     return () => {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleKeyDown);
-      canvas.dispose();
+      if (fabricCanvasRef.current && !fabricCanvasRef.current.isDisposed) {
+        fabricCanvasRef.current.dispose();
+      }
     };
   }, [cancelWiring, onSelectNode, onAddWire, onDeleteWire, onDeleteNode, activeTool]);
 
-  // Sync Nodes and Wires on Canvas
+  // Sync Nodes and Wires on Canvas with disposed canvas guard
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
+    if (!canvas || canvas.isDisposed) return;
 
+    let isCancelled = false;
     canvas.defaultCursor = activeTool === "wire" ? "crosshair" : "default";
     const nodeGroupsMap = new Map();
 
@@ -229,6 +234,8 @@ export function Canvas({
         }
       }
 
+      if (isCancelled || canvas.isDisposed || !canvas.getContext()) return;
+
       canvas.clear();
       canvas.backgroundColor = "#090d16";
 
@@ -237,6 +244,8 @@ export function Canvas({
         const svgStr = tmpl ? svgCache.get(tmpl.id) || "" : "";
 
         const nodeGroup = await createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool);
+        if (isCancelled || canvas.isDisposed) return;
+
         nodeGroup.on("moving", () => {
           node.x = nodeGroup.left;
           node.y = nodeGroup.top;
@@ -248,10 +257,16 @@ export function Canvas({
       }
 
       updateWirePositions(canvas, nodes, wires, nodeGroupsMap, onDeleteWire);
-      canvas.requestRenderAll();
+      if (!isCancelled && !canvas.isDisposed) {
+        canvas.requestRenderAll();
+      }
     };
 
     renderAll();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [nodes, wires, templates, onDeleteWire, activeTool]);
 
   return (
@@ -261,23 +276,53 @@ export function Canvas({
   );
 }
 
-function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 25) {
-  const nodeData = nodeGroup.nodeData;
-  if (!nodeData?.ports) return null;
+// Extract portId by searching subTarget and its parent element hierarchy
+function extractPortIdFromSubTarget(subTarget, nodeData) {
+  if (!subTarget) return null;
 
-  for (const port of nodeData.ports) {
-    const portPos = nodeGroup.getPortAbsPosition(port.id);
-    const dx = absClickX - portPos.x;
-    const dy = absClickY - portPos.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist <= threshold) {
-      return { portId: port.id, absPos: portPos, dist };
+  let current = subTarget;
+  while (current && current.type !== "group") {
+    if (current.portId) return current.portId;
+    if (current.id && nodeData?.ports) {
+      const match = nodeData.ports.find(
+        (p) =>
+          current.id === p.id ||
+          current.id === `device-port-${p.id}` ||
+          current.id === `port-${p.name}` ||
+          current.id.endsWith(p.id),
+      );
+      if (match) return match.id;
     }
+    current = current.group;
   }
   return null;
 }
 
+// Proximity helper using exact matrix transformed port coordinates
+function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 35) {
+  const nodeData = nodeGroup.nodeData;
+  if (!nodeData?.ports) return null;
+
+  let closest = null;
+  let minDist = threshold;
+
+  for (const port of nodeData.ports) {
+    const portPos = nodeGroup.getPortAbsPosition(port.id);
+    if (!portPos) continue;
+    const dx = absClickX - portPos.x;
+    const dy = absClickY - portPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist <= minDist) {
+      minDist = dist;
+      closest = { portId: port.id, absPos: portPos, dist };
+    }
+  }
+  return closest;
+}
+
 function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire) {
+  if (!canvas || canvas.isDisposed) return;
+
   const existingLines = canvas.getObjects("line").filter((obj) => obj.isWireLine);
   for (const lineObj of existingLines) {
     canvas.remove(lineObj);
@@ -291,26 +336,26 @@ function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire)
       const p1 = srcGroup.getPortAbsPosition(wire.srcPortId);
       const p2 = dstGroup.getPortAbsPosition(wire.dstPortId);
 
-      const wireLine = new Line([p1.x, p1.y, p2.x, p2.y], {
-        stroke: "#10b981",
-        strokeWidth: 3,
-        selectable: true,
-        hasControls: false,
-      });
-      wireLine.isWireLine = true;
-      wireLine.wireData = wire;
-
-      if (onDeleteWire) {
-        wireLine.on("mousedblclick", () => {
-          console.log("[NETLAB-WIRE-DEBUG] Double-clicked wire to delete:", wire.id);
-          onDeleteWire(wire.id);
+      if (p1 && p2) {
+        const wireLine = new Line([p1.x, p1.y, p2.x, p2.y], {
+          stroke: "#10b981",
+          strokeWidth: 3,
+          selectable: true,
+          hasControls: false,
         });
-      }
+        wireLine.isWireLine = true;
+        wireLine.wireData = wire;
 
-      canvas.add(wireLine);
-      canvas.sendObjectToBack(wireLine);
-    } else {
-      console.warn("[NETLAB-WIRE-DEBUG] Could not find node groups for wire:", wire);
+        if (onDeleteWire) {
+          wireLine.on("mousedblclick", () => {
+            console.log("[NETLAB-WIRE-DEBUG] Double-clicked wire to delete:", wire.id);
+            onDeleteWire(wire.id);
+          });
+        }
+
+        canvas.add(wireLine);
+        canvas.sendObjectToBack(wireLine);
+      }
     }
   }
 }
@@ -342,6 +387,8 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     svgObjects.push(fallbackBox);
   }
 
+  const nodePorts = node.ports || tmpl?.ports || [];
+
   const processElement = (obj) => {
     const elemId = obj.id || "";
 
@@ -359,7 +406,6 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
       }
     }
 
-    const nodePorts = node.ports || tmpl?.ports || [];
     nodePorts.forEach((port) => {
       const isMatch =
         elemId === port.id ||
@@ -372,7 +418,6 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         obj.portId = port.id;
         obj.hoverCursor = activeTool === "wire" ? "crosshair" : "pointer";
 
-        // Propagate portId to all nested child objects in group!
         if (obj._objects && Array.isArray(obj._objects)) {
           const tagChildren = (children) => {
             for (const child of children) {
@@ -423,6 +468,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   nodeGroup.isNodeGroup = true;
   nodeGroup.nodeData = node;
 
+  // Calculates exact absolute canvas coordinates of an SVG port anchor using Fabric matrix transformation
   nodeGroup.getPortAbsPosition = (portId) => {
     let targetPortObj = null;
 
@@ -443,11 +489,9 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     findPort(nodeGroup.getObjects());
 
     if (targetPortObj) {
-      const center = targetPortObj.getCenterPoint();
-      return {
-        x: nodeGroup.left + (center.x + nodeGroup.width / 2),
-        y: nodeGroup.top + (center.y + nodeGroup.height / 2),
-      };
+      const localCenter = targetPortObj.getCenterPoint();
+      const transformMatrix = nodeGroup.calcTransformMatrix();
+      return util.transformPoint(localCenter, transformMatrix);
     }
 
     return {
