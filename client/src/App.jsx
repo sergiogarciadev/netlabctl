@@ -8,6 +8,8 @@ import {
   addNodeToProject,
   fetchProject,
   fetchTemplates,
+  startProjectSimulation,
+  stopProjectSimulation,
   updateProject,
   WSClient,
 } from "./services/api";
@@ -146,13 +148,23 @@ export function App() {
     wsClientRef.current = ws;
   }, [updateHistoryButtons]);
 
-  const handleStartLab = () => {
+  const handleStartLab = async () => {
     setIsRunning(true);
+    try {
+      await startProjectSimulation(project.id);
+    } catch (err) {
+      console.error("[NETLAB-APP-DEBUG] Failed to start simulation via REST:", err);
+    }
     wsClientRef.current?.startSimulation(project.id);
   };
 
-  const handleStopLab = () => {
+  const handleStopLab = async () => {
     setIsRunning(false);
+    try {
+      await stopProjectSimulation(project.id);
+    } catch (err) {
+      console.error("[NETLAB-APP-DEBUG] Failed to stop simulation via REST:", err);
+    }
     wsClientRef.current?.stopSimulation(project.id);
   };
 

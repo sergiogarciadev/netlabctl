@@ -69,9 +69,9 @@ func (m *Manager) PrepareNodeDisk(projectID string, node *model.Node, tmplDir st
 	var args []string
 	if backingFile != "" {
 		if _, err := os.Stat(backingFile); err == nil {
-			args = []string{"create", "-f", "qcow2", "-b", backingFile, diskPath}
+			args = []string{"create", "-f", "qcow2", "-b", backingFile, "-F", "qcow2", diskPath}
 		} else {
-			logger.Log.Warn("Template backing image file not found, creating 2G blank disk", "backingFile", backingFile)
+			logger.Log.Warn("Template backing image file not found, creating 2G blank qcow2 disk", "backingFile", backingFile)
 			args = []string{"create", "-f", "qcow2", diskPath, "2G"}
 		}
 	} else {
@@ -80,11 +80,14 @@ func (m *Manager) PrepareNodeDisk(projectID string, node *model.Node, tmplDir st
 
 	cmd := exec.Command(qemuImg, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		logger.Log.Error("Failed to create qcow2 disk", "output", string(out), "error", err)
-		return "", fmt.Errorf("qemu-img failed: %w", err)
+		logger.Log.Warn("Failed to create qcow2 disk with backing image, falling back to standalone 2G disk", "output", string(out))
+		fallbackCmd := exec.Command(qemuImg, "create", "-f", "qcow2", diskPath, "2G")
+		if fbOut, fbErr := fallbackCmd.CombinedOutput(); fbErr != nil {
+			return "", fmt.Errorf("qemu-img fallback failed: %w (out: %s)", fbErr, string(fbOut))
+		}
 	}
 
-	logger.Log.Info("Created differential qcow2 disk for node", "nodeID", node.ID, "diskPath", diskPath)
+	logger.Log.Info("Created qcow2 disk for node", "nodeID", node.ID, "diskPath", diskPath)
 	return diskPath, nil
 }
 
@@ -145,7 +148,7 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		"-name", node.ID,
 		"-m", fmt.Sprintf("%dM", mem),
 		"-smp", fmt.Sprintf("%d", smp),
-		"-hda", diskPath,
+		"-drive", fmt.Sprintf("file=%s,format=qcow2,if=virtio", diskPath),
 		"-nographic",
 		"-serial", fmt.Sprintf("unix:%s,server,nowait", serialSock),
 	}
@@ -173,10 +176,21 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		args = append(args, tmpl.Qemu...)
 	}
 
+	logger.Log.Info("Executing QEMU command", "nodeID", node.ID, "binary", qemuPath, "args", args)
+
 	cmd := exec.Command(qemuPath, args...)
 	cmd.Dir = nDir
 
+	logFile, logErr := os.Create(filepath.Join(nDir, "qemu.log"))
+	if logErr == nil {
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+	}
+
 	if err := cmd.Start(); err != nil {
+		if logFile != nil {
+			_ = logFile.Close()
+		}
 		logger.Log.Error("Failed to start QEMU instance", "nodeID", node.ID, "error", err)
 		return nil, fmt.Errorf("failed to start QEMU: %w", err)
 	}
@@ -189,6 +203,22 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		SerialSockPath: serialSock,
 		IsRunning:      true,
 	}
+
+	go func() {
+		err := cmd.Wait()
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+		m.mu.Lock()
+		inst.IsRunning = false
+		m.mu.Unlock()
+
+		if err != nil {
+			logger.Log.Warn("QEMU process exited with error", "nodeID", node.ID, "error", err)
+		} else {
+			logger.Log.Info("QEMU process exited cleanly", "nodeID", node.ID)
+		}
+	}()
 
 	m.instances[node.ID] = inst
 	logger.Log.Info("Started QEMU instance for node", "nodeID", node.ID, "pid", cmd.Process.Pid)
@@ -233,4 +263,12 @@ func (m *Manager) StopAllNodes() {
 // GetSerialSocketPath returns the path to a node's serial console UNIX domain socket.
 func (m *Manager) GetSerialSocketPath(projectID, nodeID string) string {
 	return filepath.Join(m.NodeDir(projectID, nodeID), "serial.sock")
+}
+
+// IsNodeRunning checks if a QEMU node process is active.
+func (m *Manager) IsNodeRunning(nodeID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	inst, exists := m.instances[nodeID]
+	return exists && inst.IsRunning
 }

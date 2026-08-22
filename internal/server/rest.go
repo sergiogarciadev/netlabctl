@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"netlabctl/internal/logger"
 	"netlabctl/internal/model"
@@ -14,7 +12,6 @@ import (
 func (s *Server) handleListTemplates(w http.ResponseWriter, r *http.Request) {
 	templates, err := s.storage.ListTemplates()
 	if err != nil {
-		logger.Log.Error("Failed to list templates", "error", err)
 		http.Error(w, "Failed to list templates", http.StatusInternalServerError)
 		return
 	}
@@ -30,28 +27,19 @@ func (s *Server) handleGetTemplateDrawing(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	tmpl, dirPath, err := s.storage.GetTemplate(id)
+	_, tmplDir, err := s.storage.GetTemplate(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, "Template not found", http.StatusNotFound)
 		return
 	}
 
-	svgPath := filepath.Join(dirPath, tmpl.Drawing)
-	svgData, err := os.ReadFile(svgPath)
-	if err != nil {
-		logger.Log.Error("Failed to read template SVG", "path", svgPath, "error", err)
-		http.Error(w, "SVG not found", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "image/svg+xml")
-	w.Write(svgData)
+	svgPath := fmt.Sprintf("%s/drawing.svg", tmplDir)
+	http.ServeFile(w, r, svgPath)
 }
 
 func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	projects, err := s.storage.ListProjects()
 	if err != nil {
-		logger.Log.Error("Failed to list projects", "error", err)
 		http.Error(w, "Failed to list projects", http.StatusInternalServerError)
 		return
 	}
@@ -68,20 +56,18 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if top.ID == "" {
-		top.ID = fmt.Sprintf("proj-%d", os.Getpid())
+		top.ID = "default"
 	}
 	if top.Name == "" {
-		top.Name = "New Network Lab"
+		top.Name = "New Project"
 	}
 
 	if err := s.storage.SaveProject(&top); err != nil {
-		logger.Log.Error("Failed to save project", "id", top.ID, "error", err)
 		http.Error(w, "Failed to save project", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(top)
 }
 
@@ -219,4 +205,32 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(newNode)
+}
+
+func (s *Server) handleStartProjectSimulation(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Missing project id", http.StatusBadRequest)
+		return
+	}
+
+	logger.Log.Info("REST API: Start project simulation", "id", id)
+	s.hub.startProjectSimulation(id)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "running", "projectId": id})
+}
+
+func (s *Server) handleStopProjectSimulation(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Missing project id", http.StatusBadRequest)
+		return
+	}
+
+	logger.Log.Info("REST API: Stop project simulation", "id", id)
+	s.hub.stopProjectSimulation(id)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "stopped", "projectId": id})
 }

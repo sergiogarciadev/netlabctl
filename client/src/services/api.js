@@ -54,6 +54,18 @@ export async function addNodeToProject(projectId, templateId, name, x, y) {
   return res.json();
 }
 
+export async function startProjectSimulation(projectId) {
+  const res = await fetch(`/api/projects/${projectId}/start`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to start project simulation");
+  return res.json();
+}
+
+export async function stopProjectSimulation(projectId) {
+  const res = await fetch(`/api/projects/${projectId}/stop`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to stop project simulation");
+  return res.json();
+}
+
 export class WSClient {
   constructor(onMessage) {
     this.onMessage = onMessage;
