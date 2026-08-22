@@ -287,7 +287,7 @@ export function Canvas({
     };
   }, [cancelWiring, onSelectNode, onAddWire, onDeleteWire, onDeleteNode, activeTool]);
 
-  // Sync Nodes and Wires on Canvas
+  // Sync Nodes and Wires on Canvas - Preserves existing Zoom & Pan ViewportTransform!
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas || canvas.isDisposed) return;
@@ -310,8 +310,15 @@ export function Canvas({
 
       if (isCancelled || canvas.isDisposed || !canvas.getContext()) return;
 
+      // Preserve viewport transform (zoom and pan offsets) across canvas syncs!
+      const currentVpt = canvas.viewportTransform ? [...canvas.viewportTransform] : null;
+
       canvas.clear();
       canvas.backgroundColor = "#090d16";
+
+      if (currentVpt) {
+        canvas.setViewportTransform(currentVpt);
+      }
 
       for (const node of nodes) {
         const tmpl = templates.find((t) => t.id === node.templateId);
