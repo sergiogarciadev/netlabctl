@@ -13,6 +13,7 @@ export function Canvas({
   onAddWire,
   onDeleteWire,
   onDeleteNode,
+  onDebugUpdate,
 }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -79,6 +80,51 @@ export function Canvas({
     };
     window.addEventListener("keydown", handleKeyDown);
 
+    // Mouse move handler for live HUD & wire rubberband
+    canvas.on("mouse:move", (opt) => {
+      const pointer = canvas.getScenePoint(opt.e);
+      const target = opt.target;
+      const subTarget = opt.subTarget;
+
+      let nearestPort = null;
+      let nodeId = null;
+      let subTargetTag = null;
+
+      if (target?.isNodeGroup) {
+        nodeId = target.nodeData.id;
+        subTargetTag = subTarget?.id || subTarget?.portId || subTarget?.type;
+        const clickedPortId = extractPortIdFromSubTarget(subTarget, target.nodeData);
+        if (clickedPortId) {
+          const absPos = target.getPortAbsPosition(clickedPortId);
+          if (absPos) {
+            const dx = pointer.x - absPos.x;
+            const dy = pointer.y - absPos.y;
+            nearestPort = { portId: clickedPortId, absPos, dist: Math.sqrt(dx * dx + dy * dy) };
+          }
+        }
+        if (!nearestPort) {
+          nearestPort = findClosestPortInNode(target, pointer.x, pointer.y, 60);
+        }
+      }
+
+      if (onDebugUpdate) {
+        onDebugUpdate({
+          activeTool,
+          pointer,
+          nodeId,
+          subTargetTag,
+          nearestPort,
+          isWiring: wiringStateRef.current.active,
+          srcPortId: wiringStateRef.current.srcPortId,
+        });
+      }
+
+      if (wiringStateRef.current.active && wiringStateRef.current.tempLine) {
+        wiringStateRef.current.tempLine.set({ x2: pointer.x, y2: pointer.y });
+        canvas.requestRenderAll();
+      }
+    });
+
     // Mouse down handler for device selection & port wiring
     canvas.on("mouse:down", (opt) => {
       const target = opt.target;
@@ -105,7 +151,7 @@ export function Canvas({
 
         // If subTarget didn't resolve portId, test proximity to port anchors
         if (!clickedPortId || !portAbsPos) {
-          const nearPort = findClosestPortInNode(target, pointer.x, pointer.y);
+          const nearPort = findClosestPortInNode(target, pointer.x, pointer.y, 60);
           if (nearPort) {
             clickedPortId = nearPort.portId;
             portAbsPos = nearPort.absPos;
@@ -189,15 +235,6 @@ export function Canvas({
       }
     });
 
-    // Live mouse move during wiring mode
-    canvas.on("mouse:move", (opt) => {
-      if (wiringStateRef.current.active && wiringStateRef.current.tempLine) {
-        const pointer = canvas.getScenePoint(opt.e);
-        wiringStateRef.current.tempLine.set({ x2: pointer.x, y2: pointer.y });
-        canvas.requestRenderAll();
-      }
-    });
-
     return () => {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleKeyDown);
@@ -205,7 +242,15 @@ export function Canvas({
         fabricCanvasRef.current.dispose();
       }
     };
-  }, [cancelWiring, onSelectNode, onAddWire, onDeleteWire, onDeleteNode, activeTool]);
+  }, [
+    cancelWiring,
+    onSelectNode,
+    onAddWire,
+    onDeleteWire,
+    onDeleteNode,
+    activeTool,
+    onDebugUpdate,
+  ]);
 
   // Sync Nodes and Wires on Canvas with disposed canvas guard
   useEffect(() => {
@@ -308,11 +353,24 @@ function getAbsoluteObjectCenter(obj) {
     matrix = util.multiplyTransformMatrices(parentMatrix, matrix);
     parent = parent.group;
   }
-  return util.transformPoint({ x: 0, y: 0 }, matrix);
+
+  // Get local center point relative to obj
+  const localCenter = obj.getCenterPoint();
+
+  // In Fabric.js v6, obj.getCenterPoint() on a child inside a group already returns point transformed by obj's own matrix.
+  // Transforming by parent matrices gives absolute canvas scene point:
+  let finalPoint = localCenter;
+  let curr = obj.group;
+  while (curr) {
+    const pMatrix = curr.calcTransformMatrix();
+    finalPoint = util.transformPoint(finalPoint, pMatrix);
+    curr = curr.group;
+  }
+  return finalPoint;
 }
 
 // Proximity helper using exact multi-level matrix transformed port coordinates
-function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 40) {
+function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 60) {
   const nodeData = nodeGroup.nodeData;
   if (!nodeData?.ports) return null;
 
@@ -428,7 +486,6 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         elemId.endsWith(port.id);
 
       if (isMatch) {
-        // Tag port object and recursively tag all descendant elements
         const tagChildren = (targetObj) => {
           targetObj.portId = port.id;
           targetObj.hoverCursor = activeTool === "wire" ? "crosshair" : "pointer";
@@ -477,7 +534,6 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   nodeGroup.isNodeGroup = true;
   nodeGroup.nodeData = node;
 
-  // Calculates exact absolute canvas coordinates of an SVG port anchor using multi-level matrix transformation
   nodeGroup.getPortAbsPosition = (portId) => {
     let targetPortObj = null;
 
