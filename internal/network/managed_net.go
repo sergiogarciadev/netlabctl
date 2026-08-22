@@ -209,6 +209,18 @@ func (nm *NetworkManager) UpdateWireTZSP(wireID string, tzspTarget string) {
 	}
 }
 
+// RemoveWireBridge stops and removes an active wire bridge.
+func (nm *NetworkManager) RemoveWireBridge(wireID string) {
+	nm.mu.Lock()
+	defer nm.mu.Unlock()
+
+	if bridge, exists := nm.bridges[wireID]; exists {
+		close(bridge.stopChan)
+		delete(nm.bridges, wireID)
+		logger.Log.Info("Removed managed network wire bridge", "wireID", wireID)
+	}
+}
+
 func (b *WireBridge) runBridge() {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()

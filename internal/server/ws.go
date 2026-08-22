@@ -440,6 +440,43 @@ func (h *WSHub) stopProjectSimulation(projectID string) {
 	h.BroadcastToProject(projectID, "simulation_stopped", map[string]string{"status": "stopped"})
 }
 
+// SyncTopologyNetworkAndMonitors updates wire bridges and issues QMP monitor set_link carrier state updates.
+func (h *WSHub) SyncTopologyNetworkAndMonitors(top *model.Topology) {
+	if top == nil || h.netMgr == nil || h.qemuMgr == nil {
+		return
+	}
+
+	connectedPorts := make(map[string]bool)
+	wireMap := make(map[string]bool)
+
+	for _, wire := range top.Wires {
+		wireMap[wire.ID] = true
+		connectedPorts[fmt.Sprintf("%s:%s", wire.SrcNodeID, wire.SrcPortID)] = true
+		connectedPorts[fmt.Sprintf("%s:%s", wire.DstNodeID, wire.DstPortID)] = true
+
+		// Add/update wire bridge
+		_ = h.netMgr.AddWireBridge(wire)
+	}
+
+	// Remove wire bridges for any deleted wires
+	for _, stat := range h.netMgr.GetStats() {
+		if !wireMap[stat.WireID] {
+			h.netMgr.RemoveWireBridge(stat.WireID)
+		}
+	}
+
+	// Issue QMP/HMP monitor set_link carrier status (ethN on/off) for all node ports
+	for _, node := range top.Nodes {
+		for i, port := range node.Ports {
+			devID := fmt.Sprintf("eth%d", i)
+			portKey := fmt.Sprintf("%s:%s", node.ID, port.ID)
+			isConn := connectedPorts[portKey]
+
+			_ = h.qemuMgr.SetPortLinkStatus(top.ID, node.ID, devID, isConn)
+		}
+	}
+}
+
 func (c *Client) sendJSON(msgType string, data interface{}) {
 	dBytes, err := json.Marshal(data)
 	if err != nil {

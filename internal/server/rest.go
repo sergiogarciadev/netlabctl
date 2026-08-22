@@ -108,12 +108,8 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Dynamically register wire bridges for any newly added wires during live simulation
-	if s.netMgr != nil {
-		for _, wire := range top.Wires {
-			_ = s.netMgr.AddWireBridge(wire)
-		}
-	}
+	// Synchronize Managed Network bridges and QMP monitor set_link states for all nodes/ports
+	s.hub.SyncTopologyNetworkAndMonitors(&top)
 
 	// Broadcast updated topology state to all connected WS subscribers
 	s.hub.BroadcastToProject(id, model.MsgTypeProjectState, top)
