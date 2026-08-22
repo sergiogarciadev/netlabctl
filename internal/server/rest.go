@@ -186,6 +186,12 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	if req.X == 0 && req.Y == 0 {
+		idx := len(top.Nodes)
+		req.X = 100 + float64(idx%3)*240
+		req.Y = 120 + float64(idx/3)*200
+	}
+
 	newNode := model.Node{
 		ID:         nodeID,
 		TemplateID: tmpl.ID,

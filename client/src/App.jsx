@@ -158,8 +158,9 @@ export function App() {
 
   const handleAddNodeFromTemplate = async (tmpl) => {
     try {
-      const posX = 100 + (project.nodes?.length || 0) * 160;
-      const posY = 150;
+      const count = project.nodes?.length || 0;
+      const posX = 100 + (count % 3) * 240;
+      const posY = 120 + Math.floor(count / 3) * 200;
       console.log("[NETLAB-APP-DEBUG] Adding node from template:", tmpl.id, { posX, posY });
       const newNode = await addNodeToProject(project.id, tmpl.id, "", posX, posY);
       const updatedNodes = [...(project.nodes || []), newNode];

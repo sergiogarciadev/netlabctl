@@ -379,6 +379,7 @@ export function Canvas({
         if (isCancelled || canvas.isDisposed) return;
 
         nodeGroup.on("moving", () => {
+          preventDeviceOverlap(nodeGroup, canvas.getObjects());
           node.x = nodeGroup.left;
           node.y = nodeGroup.top;
           updateWirePositions(canvas, nodes, wires, nodeGroupsMap, onDeleteWire);
@@ -467,6 +468,52 @@ export function Canvas({
       <DebugPanel debugInfo={debugInfo} />
     </div>
   );
+}
+
+// Prevent device node overlap and enforce at least 100px bottom clearance gap between devices
+function preventDeviceOverlap(targetGroup, allGroups) {
+  const targetWidth = targetGroup.width || 120;
+  const targetHeight = targetGroup.height || 50;
+
+  const minHorizontalGap = 30;
+  const minBottomGap = 100; // Must have at least 100px clearance on bottom from another device
+
+  for (const other of allGroups) {
+    if (other === targetGroup || !other.isNodeGroup) continue;
+
+    const otherWidth = other.width || 120;
+    const otherHeight = other.height || 50;
+
+    const tLeft = targetGroup.left;
+    const tRight = tLeft + targetWidth;
+    const tTop = targetGroup.top;
+    const tBottom = tTop + targetHeight;
+
+    const oLeft = other.left;
+    const oRight = oLeft + otherWidth;
+    const oTop = other.top;
+    const oBottom = oTop + otherHeight;
+
+    // Check horizontal overlap with 30px gap
+    const isHorizOverlap = tRight + minHorizontalGap > oLeft && tLeft - minHorizontalGap < oRight;
+
+    // Check vertical overlap with 100px bottom clearance
+    const isBelowOther = tTop >= oTop;
+    const verticalClearanceNeeded = isBelowOther ? minBottomGap : 30;
+
+    const isVertOverlap =
+      tBottom + verticalClearanceNeeded > oTop && tTop - verticalClearanceNeeded < oBottom;
+
+    if (isHorizOverlap && isVertOverlap) {
+      if (isBelowOther) {
+        // Enforce 100px clearance below 'other'
+        targetGroup.top = oBottom + minBottomGap;
+      } else {
+        // Enforce top clearance
+        targetGroup.top = oTop - targetHeight - 30;
+      }
+    }
+  }
 }
 
 // Extract exact padded bounding box of a device node group on the canvas
