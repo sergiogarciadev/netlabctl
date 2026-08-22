@@ -213,27 +213,33 @@ html,
 }
 
 /* Status & Port Required CSS Classes */
+g.port.connected,
 .port.connected {
-  fill: #10b981 !important;
+  fill: #10b981;
 }
 
+g.port.disconnected,
 .port.disconnected {
-  fill: #64748b !important;
+  fill: #64748b;
 }
 
+g.port.user,
 .port.user {
-  fill: #3b82f6 !important;
+  fill: #3b82f6;
 }
 
+g.port.qemu,
 .port.qemu {
-  fill: #8b5cf6 !important;
+  fill: #8b5cf6;
 }
 
+circle.power-status.on,
 .power-status.on {
-  fill: #10b981 !important;
+  fill: #10b981;
   filter: drop-shadow(0 0 6px #10b981);
 }
 
+circle.power-status.off,
 .power-status.off {
-  fill: #ef4444 !important;
+  fill: #ef4444;
 }

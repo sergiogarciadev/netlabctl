@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -360,93 +359,99 @@ func (s *Server) handleNodeTerminal(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	serialSock := s.qemuMgr.GetSerialSocketPath(projectID, nodeID)
-	unixConn, dialErr := net.Dial("unix", serialSock)
 
-	if dialErr != nil {
-		welcomeMsg := fmt.Sprintf("\r\n\x1b[1;36m=== netlabctl Serial Console — %s ===\x1b[0m\r\n"+
-			"\x1b[33mStatus: Standby (Click 'Start Lab' to boot QEMU instance)\x1b[0m\r\n"+
-			"\x1b[90mVirtual CLI active. Type 'help' or commands below.\x1b[0m\r\n\r\n%s> ", nodeID, nodeID)
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(welcomeMsg))
+	wsInput := make(chan []byte, 128)
+	wsDone := make(chan struct{})
 
-		var inputBuf string
+	// Read WS messages from client (keystrokes from xterm.js)
+	go func() {
+		defer close(wsDone)
 		for {
 			_, msg, err := conn.ReadMessage()
 			if err != nil {
-				break
+				return
 			}
-
-			str := string(msg)
-			if str == "\r" || str == "\n" {
-				cmd := strings.TrimSpace(inputBuf)
-				inputBuf = ""
-				response := "\r\n"
-
-				switch cmd {
-				case "help":
-					response += "Available commands: help, status, info, ports, clear\r\n"
-				case "status":
-					response += fmt.Sprintf("Node %s is in Standby mode.\r\n", nodeID)
-				case "info":
-					response += fmt.Sprintf("Node ID: %s | Project: %s\r\n", nodeID, projectID)
-				case "clear":
-					_ = conn.WriteMessage(websocket.TextMessage, []byte("\x1bc"))
-					response = ""
-				default:
-					if cmd != "" {
-						response += fmt.Sprintf("Unknown command: %s\r\n", cmd)
-					}
-				}
-
-				response += fmt.Sprintf("%s> ", nodeID)
-				_ = conn.WriteMessage(websocket.TextMessage, []byte(response))
-			} else if str == "\x7f" || str == "\b" { // Backspace
-				if len(inputBuf) > 0 {
-					inputBuf = inputBuf[:len(inputBuf)-1]
-					_ = conn.WriteMessage(websocket.TextMessage, []byte("\b \b"))
-				}
-			} else {
-				inputBuf += str
-				_ = conn.WriteMessage(websocket.TextMessage, []byte(str))
+			select {
+			case wsInput <- msg:
+			default:
 			}
 		}
-		return
+	}()
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	var activeSock net.Conn
+	var isConnected bool
+	sockClosed := make(chan struct{}, 1)
+
+	showWaitingMessage := func() {
+		msg := fmt.Sprintf("\x1bc\r\n\x1b[1;36m=== Serial Console — %s ===\x1b[0m\r\n"+
+			"\x1b[33mMachine is powered off. Waiting for machine to start...\x1b[0m\r\n", nodeID)
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(msg))
 	}
 
-	defer unixConn.Close()
+	showWaitingMessage()
 
-	_ = conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n\x1b[1;32mConnected to %s QEMU Serial Console...\x1b[0m\r\n\r\n", nodeID)))
+	for {
+		if !isConnected {
+			sock, err := net.Dial("unix", serialSock)
+			if err == nil {
+				activeSock = sock
+				isConnected = true
+				_ = conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\x1bc\r\n\x1b[1;32mConnected to %s QEMU Serial Console...\x1b[0m\r\n\r\n", nodeID)))
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Stream UNIX serial socket -> WebSocket (to xterm.js)
-	go func() {
-		defer wg.Done()
-		buf := make([]byte, 1024)
-		for {
-			n, err := unixConn.Read(buf)
-			if n > 0 {
-				_ = conn.WriteMessage(websocket.TextMessage, buf[:n])
-			}
-			if err != nil {
-				break
+				// Stream serial socket -> WebSocket
+				go func(s net.Conn) {
+					buf := make([]byte, 1024)
+					for {
+						n, err := s.Read(buf)
+						if n > 0 {
+							_ = conn.WriteMessage(websocket.TextMessage, buf[:n])
+						}
+						if err != nil {
+							_ = s.Close()
+							select {
+							case sockClosed <- struct{}{}:
+							default:
+							}
+							return
+						}
+					}
+				}(activeSock)
 			}
 		}
-	}()
 
-	// Stream WebSocket (from xterm.js keystrokes) -> UNIX serial socket
-	go func() {
-		defer wg.Done()
-		for {
-			_, msg, err := conn.ReadMessage()
-			if err != nil {
-				break
+		select {
+		case <-wsDone:
+			if activeSock != nil {
+				_ = activeSock.Close()
 			}
-			_, _ = unixConn.Write(msg)
-		}
-	}()
+			return
 
-	wg.Wait()
+		case <-sockClosed:
+			if activeSock != nil {
+				_ = activeSock.Close()
+			}
+			isConnected = false
+			activeSock = nil
+			showWaitingMessage()
+
+		case msg := <-wsInput:
+			if isConnected && activeSock != nil {
+				_, err := activeSock.Write(msg)
+				if err != nil {
+					_ = activeSock.Close()
+					isConnected = false
+					activeSock = nil
+					showWaitingMessage()
+				}
+			}
+
+		case <-ticker.C:
+			// Periodic retry tick when not connected
+		}
+	}
 }
 
 // Suppress unused imports check
