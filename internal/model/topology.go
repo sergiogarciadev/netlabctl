@@ -13,6 +13,8 @@ type Node struct {
 	ID         string                 `json:"id"`
 	TemplateID string                 `json:"templateId"`
 	Name       string                 `json:"name"`
+	Status     string                 `json:"status,omitempty"` // "running", "stopped", "error"
+	Power      string                 `json:"power,omitempty"`  // "on", "off"
 	X          float64                `json:"x"`
 	Y          float64                `json:"y"`
 	Memory     int                    `json:"memory,omitempty"`
@@ -43,8 +45,9 @@ type Wire struct {
 
 // Topology represents a simulation project saved in topology.json.
 type Topology struct {
-	ID    string   `json:"id"`
-	Name  string   `json:"name"`
-	Nodes []Node   `json:"nodes"`
-	Wires []Wire   `json:"wires"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	SimulationStatus string `json:"simulationStatus,omitempty"` // "running", "stopped"
+	Nodes            []Node `json:"nodes"`
+	Wires            []Wire `json:"wires"`
 }

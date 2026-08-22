@@ -171,11 +171,47 @@ export function Sidebar({
         </button>
       </div>
 
-      <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "12px" }}>
-        Template:{" "}
-        <strong style={{ color: "var(--text-main)" }}>
-          {tmpl ? tmpl.name : selectedNode.templateId}
-        </strong>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          fontSize: "0.8rem",
+          color: "var(--text-muted)",
+          marginBottom: "12px",
+        }}
+      >
+        <div>
+          Template:{" "}
+          <strong style={{ color: "var(--text-main)" }}>
+            {tmpl ? tmpl.name : selectedNode.templateId}
+          </strong>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <span
+            style={{
+              padding: "2px 8px",
+              borderRadius: "10px",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              background:
+                selectedNode.power === "on" || selectedNode.status === "running"
+                  ? "rgba(34, 197, 94, 0.15)"
+                  : "rgba(239, 68, 68, 0.15)",
+              color:
+                selectedNode.power === "on" || selectedNode.status === "running"
+                  ? "#22c55e"
+                  : "#ef4444",
+              border: `1px solid ${
+                selectedNode.power === "on" || selectedNode.status === "running"
+                  ? "#22c55e44"
+                  : "#ef444444"
+              }`,
+            }}
+          >
+            Power: {selectedNode.power === "on" || selectedNode.status === "running" ? "ON" : "OFF"}
+          </span>
+        </div>
       </div>
 
       {/* Tabs */}

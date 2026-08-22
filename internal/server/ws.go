@@ -255,6 +255,29 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 		var payload model.NodeActionPayload
 		if err := json.Unmarshal(msg.Data, &payload); err == nil {
 			logger.Log.Info("WS Command: Start node", "node", payload.NodeID)
+			top, err := c.hub.storage.GetProject(c.projectID)
+			if err == nil {
+				for i := range top.Nodes {
+					if top.Nodes[i].ID == payload.NodeID {
+						tmpl, tmplDir, _ := c.hub.storage.GetTemplate(top.Nodes[i].TemplateID)
+						portAddrs := make(map[string]string)
+						for nIdx, n := range top.Nodes {
+							for pIdx, p := range n.Ports {
+								ip := fmt.Sprintf("127.0.%d.%d", nIdx+1, pIdx+1)
+								tcpPort := 10000 + (nIdx+1)*20 + pIdx + 1
+								portAddrs[fmt.Sprintf("%s:%s", n.ID, p.ID)] = fmt.Sprintf("%s:%d", ip, tcpPort)
+							}
+						}
+						_, _ = c.hub.qemuMgr.StartNode(c.projectID, &top.Nodes[i], tmplDir, tmpl, portAddrs)
+						top.Nodes[i].Status = "running"
+						top.Nodes[i].Power = "on"
+						top.SimulationStatus = "running"
+						_ = c.hub.storage.SaveProject(top)
+						c.hub.BroadcastToProject(c.projectID, model.MsgTypeProjectState, top)
+						break
+					}
+				}
+			}
 		}
 
 	case model.MsgTypeStopNode:
@@ -262,6 +285,25 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 		if err := json.Unmarshal(msg.Data, &payload); err == nil {
 			logger.Log.Info("WS Command: Stop node", "node", payload.NodeID)
 			_ = c.hub.qemuMgr.StopNode(payload.NodeID)
+
+			top, err := c.hub.storage.GetProject(c.projectID)
+			if err == nil {
+				anyRunning := false
+				for i := range top.Nodes {
+					if top.Nodes[i].ID == payload.NodeID {
+						top.Nodes[i].Status = "stopped"
+						top.Nodes[i].Power = "off"
+					}
+					if top.Nodes[i].Power == "on" || top.Nodes[i].Status == "running" {
+						anyRunning = true
+					}
+				}
+				if !anyRunning {
+					top.SimulationStatus = "stopped"
+				}
+				_ = c.hub.storage.SaveProject(top)
+				c.hub.BroadcastToProject(c.projectID, model.MsgTypeProjectState, top)
+			}
 		}
 
 	case model.MsgTypeSetWireCondition:
@@ -368,12 +410,33 @@ func (h *WSHub) startProjectSimulation(projectID string) {
 		}
 	}()
 
+	// 5. Update and save project simulation status & node power states
+	top.SimulationStatus = "running"
+	for i := range top.Nodes {
+		top.Nodes[i].Status = "running"
+		top.Nodes[i].Power = "on"
+	}
+	_ = h.storage.SaveProject(top)
+
+	h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
 	h.BroadcastToProject(projectID, "simulation_started", map[string]string{"status": "running"})
 }
 
 func (h *WSHub) stopProjectSimulation(projectID string) {
 	h.qemuMgr.StopAllNodes()
 	h.netMgr.StopAllProxies()
+
+	top, err := h.storage.GetProject(projectID)
+	if err == nil {
+		top.SimulationStatus = "stopped"
+		for i := range top.Nodes {
+			top.Nodes[i].Status = "stopped"
+			top.Nodes[i].Power = "off"
+		}
+		_ = h.storage.SaveProject(top)
+		h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
+	}
+
 	h.BroadcastToProject(projectID, "simulation_stopped", map[string]string{"status": "stopped"})
 }
 

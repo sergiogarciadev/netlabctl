@@ -116,10 +116,19 @@ export function App() {
       })
       .catch((err) => console.error("[NETLAB-APP-DEBUG] Failed to load templates:", err));
 
-    fetchProject("default")
+    fetchProject("default");
+    const updateProjectState = (top) => {
+      setProject(top);
+      const active =
+        top.simulationStatus === "running" ||
+        top.nodes?.some((n) => n.power === "on" || n.status === "running");
+      setIsRunning(Boolean(active));
+    };
+
+    getProject("default")
       .then((top) => {
         console.log("[NETLAB-APP-DEBUG] Loaded project topology:", top);
-        setProject(top);
+        updateProjectState(top);
         historyRef.current = [JSON.parse(JSON.stringify(top))];
         historyIndexRef.current = 0;
         updateHistoryButtons();
@@ -132,7 +141,7 @@ export function App() {
           wires: [],
         };
         updateProject("default", initTop).then((top) => {
-          setProject(top);
+          updateProjectState(top);
           historyRef.current = [JSON.parse(JSON.stringify(top))];
           historyIndexRef.current = 0;
           updateHistoryButtons();
@@ -142,7 +151,11 @@ export function App() {
     const ws = new WSClient((msg) => {
       if (msg.type === "project_state") {
         console.log("[NETLAB-APP-DEBUG] Received WS project_state:", msg.data);
-        setProject(msg.data);
+        updateProjectState(msg.data);
+      } else if (msg.type === "simulation_started") {
+        setIsRunning(true);
+      } else if (msg.type === "simulation_stopped") {
+        setIsRunning(false);
       } else if (msg.type === "wire_stats") {
         if (Array.isArray(msg.data?.stats)) {
           setWireStats(msg.data.stats);
