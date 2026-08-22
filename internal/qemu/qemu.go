@@ -155,18 +155,19 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 
 	// Add port netdevs
 	for i, port := range node.Ports {
-		listenPort, hasListen := portSockets[port.ID]
+		targetPort, isConnected := portSockets[port.ID]
 		netdevID := fmt.Sprintf("net%d", i)
 		devID := fmt.Sprintf("eth%d", i)
 
-		if hasListen {
+		if isConnected {
 			args = append(args,
-				"-netdev", fmt.Sprintf("socket,id=%s,listen=127.0.0.1:%d", netdevID, listenPort),
+				"-netdev", fmt.Sprintf("socket,id=%s,connect=127.0.0.1:%d", netdevID, targetPort),
 				"-device", fmt.Sprintf("e1000,netdev=%s,mac=%s,id=%s", netdevID, port.MAC, devID),
 			)
 		} else {
+			// Unconnected port - use distinct user subnet per port to prevent slirp collisions
 			args = append(args,
-				"-netdev", fmt.Sprintf("user,id=%s", netdevID),
+				"-netdev", fmt.Sprintf("user,id=%s,net=10.0.%d.0/24", netdevID, (i+1)%250),
 				"-device", fmt.Sprintf("e1000,netdev=%s,mac=%s,id=%s", netdevID, port.MAC, devID),
 			)
 		}
