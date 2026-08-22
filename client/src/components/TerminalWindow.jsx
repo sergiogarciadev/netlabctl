@@ -27,8 +27,12 @@ export function TerminalWindow({ node, onClose }) {
     term.open(terminalRef.current);
     fitAddon.fit();
 
+    const host =
+      window.location.port === "3000" ? `${window.location.hostname}:8080` : window.location.host;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/projects/default/nodes/${node.id}/terminal`;
+    const wsUrl = `${protocol}//${host}/api/v1/projects/default/nodes/${node.id}/terminal`;
+
+    console.log("[NETLAB-TERMINAL-DEBUG] Opening terminal WebSocket connection:", wsUrl);
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
@@ -39,7 +43,8 @@ export function TerminalWindow({ node, onClose }) {
       term.write(event.data);
     };
 
-    socket.onerror = () => {
+    socket.onerror = (err) => {
+      console.error("[NETLAB-TERMINAL-DEBUG] Terminal WebSocket error:", err);
       term.writeln("\r\n\x1b[1;31mTerminal connection error.\x1b[0m\r\n");
     };
 
