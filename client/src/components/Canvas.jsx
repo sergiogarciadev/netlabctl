@@ -166,17 +166,25 @@ export function Canvas({
     if (!canvas || canvas.isDisposed || !wireStats || wireStats.length === 0) return;
 
     wireStats.forEach((stat) => {
-      const wireInfo = wirePolylineMapRef.current.get(stat.wireId);
-      if (!wireInfo?.points || wireInfo.points.length < 2) return;
+      // Direct Canvas Object Lookup for wire line (bulletproof against map cache race conditions)
+      const wireLineObj = canvas
+        .getObjects()
+        .find((obj) => obj.isWireLine && obj.wireData?.id === stat.wireId);
+
+      const points = wireLineObj?.points || wirePolylineMapRef.current.get(stat.wireId)?.points;
+      if (!points || points.length < 2) {
+        console.warn("[NETLAB-ANIM-DEBUG] Wire line points not found for wireId:", stat.wireId);
+        return;
+      }
 
       const fwdCount = stat.srcToDst100ms || (stat.count > 0 ? stat.count : 0);
       if (fwdCount > 0) {
-        triggerCircleAnimation(canvas, wireInfo.points, fwdCount, false);
+        triggerCircleAnimation(canvas, points, fwdCount, false);
       }
 
       const revCount = stat.dstToSrc100ms || 0;
       if (revCount > 0) {
-        triggerCircleAnimation(canvas, wireInfo.points, revCount, true);
+        triggerCircleAnimation(canvas, points, revCount, true);
       }
     });
   }, [wireStats, triggerCircleAnimation]);
