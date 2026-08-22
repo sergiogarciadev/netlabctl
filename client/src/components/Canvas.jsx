@@ -58,9 +58,10 @@ export function Canvas({
     if (!canvas || canvas.isDisposed || !points || points.length < 2 || count <= 0) return;
 
     const wireStrokeWidth = 3;
+    // Formula: starts at double wire size (2x), increases by 1x wire size for each log10 step
     const logFactor = Math.floor(Math.log10(Math.max(1, count)));
     const sizeMultiplier = 2 + logFactor;
-    const radius = Math.max(4, (sizeMultiplier * wireStrokeWidth) / 1.5);
+    const radius = (sizeMultiplier * wireStrokeWidth) / 2; // e.g. 3px (2x), 4.5px (3x), 6px (4x)
 
     const pathPoints = isReverse ? [...points].reverse() : points;
     const startPt = pathPoints[0];
@@ -74,7 +75,7 @@ export function Canvas({
       strokeWidth: 1.5,
       shadow: new Shadow({
         color: isReverse ? "#ff007f" : "#00f3ff",
-        blur: 14,
+        blur: 10,
       }),
       originX: "center",
       originY: "center",
@@ -103,7 +104,7 @@ export function Canvas({
       return;
     }
 
-    const duration = 700; // 700ms smooth animation speed
+    const duration = 380; // 380ms fast & responsive animation speed
     const startTime = performance.now();
 
     const step = (now) => {

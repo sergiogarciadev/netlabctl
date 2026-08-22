@@ -110,13 +110,19 @@ func (h *WSHub) broadcastStats(stats []network.WireProxyStats) {
 
 	statItems := make([]model.WireStatItem, 0, len(stats))
 	for _, s := range stats {
-		statItems = append(statItems, model.WireStatItem{
-			WireID:        s.WireID,
-			Count:         int(s.Packets100ms),
-			Bytes:         s.TotalBytes,
-			SrcToDst100ms: s.SrcToDst100ms,
-			DstToSrc100ms: s.DstToSrc100ms,
-		})
+		if s.Packets100ms > 0 || s.SrcToDst100ms > 0 || s.DstToSrc100ms > 0 {
+			statItems = append(statItems, model.WireStatItem{
+				WireID:        s.WireID,
+				Count:         int(s.Packets100ms),
+				Bytes:         s.TotalBytes,
+				SrcToDst100ms: s.SrcToDst100ms,
+				DstToSrc100ms: s.DstToSrc100ms,
+			})
+		}
+	}
+
+	if len(statItems) == 0 {
+		return // Do NOT send event if no wires have packet traffic!
 	}
 
 	payload := model.WireStatsPayload{Stats: statItems}
