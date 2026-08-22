@@ -1,4 +1,4 @@
-import { Canvas as FabricCanvas, Group, Line, loadSVGFromString, Rect, util } from "fabric";
+import { Canvas as FabricCanvas, Group, Line, loadSVGFromString, Rect } from "fabric";
 import { useCallback, useEffect, useRef } from "react";
 import { fetchTemplateDrawing } from "../services/api";
 
@@ -93,17 +93,17 @@ export function Canvas({
       if (target?.isNodeGroup) {
         nodeId = target.nodeData.id;
         subTargetTag = subTarget?.id || subTarget?.portId || subTarget?.type;
-        const clickedPortId = extractPortIdFromSubTarget(subTarget, target.nodeData);
-        if (clickedPortId) {
-          const absPos = target.getPortAbsPosition(clickedPortId);
-          if (absPos) {
-            const dx = pointer.x - absPos.x;
-            const dy = pointer.y - absPos.y;
-            nearestPort = { portId: clickedPortId, absPos, dist: Math.sqrt(dx * dx + dy * dy) };
+        nearestPort = findClosestPortInNode(target, pointer.x, pointer.y, 45);
+      } else {
+        // Search all nodes for proximity if target wasn't directly hit
+        for (const obj of canvas.getObjects()) {
+          if (obj.isNodeGroup) {
+            const near = findClosestPortInNode(obj, pointer.x, pointer.y, 35);
+            if (near && (!nearestPort || near.dist < nearestPort.dist)) {
+              nearestPort = near;
+              nodeId = obj.nodeData.id;
+            }
           }
-        }
-        if (!nearestPort) {
-          nearestPort = findClosestPortInNode(target, pointer.x, pointer.y, 60);
         }
       }
 
@@ -141,38 +141,39 @@ export function Canvas({
         pointer,
       });
 
-      if (target?.isNodeGroup) {
-        let clickedPortId = extractPortIdFromSubTarget(subTarget, target.nodeData);
-        let portAbsPos = null;
+      let targetNodeGroup = target?.isNodeGroup ? target : null;
+      let nearPort = null;
 
-        if (clickedPortId) {
-          portAbsPos = target.getPortAbsPosition(clickedPortId);
-        }
-
-        // If subTarget didn't resolve portId, test proximity to port anchors
-        if (!clickedPortId || !portAbsPos) {
-          const nearPort = findClosestPortInNode(target, pointer.x, pointer.y, 60);
-          if (nearPort) {
-            clickedPortId = nearPort.portId;
-            portAbsPos = nearPort.absPos;
-            console.log("[NETLAB-WIRE-DEBUG] Found port by proximity:", nearPort);
+      if (targetNodeGroup) {
+        nearPort = findClosestPortInNode(targetNodeGroup, pointer.x, pointer.y, 45);
+      } else {
+        // Global canvas search for port near pointer
+        for (const obj of canvas.getObjects()) {
+          if (obj.isNodeGroup) {
+            const hit = findClosestPortInNode(obj, pointer.x, pointer.y, 35);
+            if (hit && (!nearPort || hit.dist < nearPort.dist)) {
+              nearPort = hit;
+              targetNodeGroup = obj;
+            }
           }
         }
+      }
 
-        console.log("[NETLAB-WIRE-DEBUG] Port detection result:", {
+      if (nearPort && targetNodeGroup) {
+        const clickedPortId = nearPort.portId;
+        const portAbsPos = nearPort.absPos;
+        const node = targetNodeGroup.nodeData;
+
+        console.log("[NETLAB-WIRE-DEBUG] PORT CLICK DETECTED:", {
           clickedPortId,
           portAbsPos,
+          nodeId: node.id,
+          activeTool,
           isWiringActive: wiringStateRef.current.active,
         });
 
-        // Trigger wiring if in "wire" tool mode OR if a port was clicked directly
-        if (
-          clickedPortId &&
-          portAbsPos &&
-          (activeTool === "wire" || subTarget?.portId || wiringStateRef.current.active)
-        ) {
+        if (activeTool === "wire" || subTarget?.portId || wiringStateRef.current.active) {
           opt.e.stopPropagation();
-          const node = target.nodeData;
 
           if (!wiringStateRef.current.active) {
             console.log("[NETLAB-WIRE-DEBUG] STARTING WIRE from:", {
@@ -321,56 +322,8 @@ export function Canvas({
   );
 }
 
-// Extract portId by searching subTarget and its parent element hierarchy
-function extractPortIdFromSubTarget(subTarget, nodeData) {
-  if (!subTarget) return null;
-
-  let current = subTarget;
-  while (current && current.type !== "group") {
-    if (current.portId) return current.portId;
-    if (current.id && nodeData?.ports) {
-      const match = nodeData.ports.find(
-        (p) =>
-          current.id === p.id ||
-          current.id === `device-port-${p.id}` ||
-          current.id === `port-${p.name}` ||
-          current.id.endsWith(p.id),
-      );
-      if (match) return match.id;
-    }
-    current = current.group;
-  }
-  return null;
-}
-
-// Calculates absolute scene center point for an object nested inside arbitrarily deep groups
-function getAbsoluteObjectCenter(obj) {
-  if (!obj) return null;
-  let matrix = obj.calcTransformMatrix();
-  let parent = obj.group;
-  while (parent) {
-    const parentMatrix = parent.calcTransformMatrix();
-    matrix = util.multiplyTransformMatrices(parentMatrix, matrix);
-    parent = parent.group;
-  }
-
-  // Get local center point relative to obj
-  const localCenter = obj.getCenterPoint();
-
-  // In Fabric.js v6, obj.getCenterPoint() on a child inside a group already returns point transformed by obj's own matrix.
-  // Transforming by parent matrices gives absolute canvas scene point:
-  let finalPoint = localCenter;
-  let curr = obj.group;
-  while (curr) {
-    const pMatrix = curr.calcTransformMatrix();
-    finalPoint = util.transformPoint(finalPoint, pMatrix);
-    curr = curr.group;
-  }
-  return finalPoint;
-}
-
-// Proximity helper using exact multi-level matrix transformed port coordinates
-function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 60) {
+// Proximity helper using exact relative port positions
+function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 45) {
   const nodeData = nodeGroup.nodeData;
   if (!nodeData?.ports) return null;
 
@@ -534,32 +487,28 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   nodeGroup.isNodeGroup = true;
   nodeGroup.nodeData = node;
 
+  // Pre-calculate deterministic relative port anchor positions for this device template
+  nodeGroup.portRelativePositions = new Map();
+  nodePorts.forEach((port, idx) => {
+    // Standard Mikrotik & device port layout math relative to group top-left (0,0)
+    // Container at x=13, y=30. Each port width=20, spacing=25. Port center: x = 13 + (idx * 25) + 10 = 23 + idx*25, y = 30 + 8 = 38
+    const relX = 23 + idx * 25;
+    const relY = 38;
+    nodeGroup.portRelativePositions.set(port.id, { x: relX, y: relY });
+  });
+
   nodeGroup.getPortAbsPosition = (portId) => {
-    let targetPortObj = null;
-
-    const findPort = (objs) => {
-      for (const obj of objs) {
-        if (
-          obj.portId === portId ||
-          obj.id === portId ||
-          obj.id === `port-${portId}` ||
-          obj.id === `device-port-${portId}`
-        ) {
-          targetPortObj = obj;
-          return;
-        }
-        if (obj._objects) findPort(obj._objects);
-      }
-    };
-    findPort(nodeGroup.getObjects());
-
-    if (targetPortObj) {
-      return getAbsoluteObjectCenter(targetPortObj);
+    const relPos = nodeGroup.portRelativePositions.get(portId);
+    if (relPos) {
+      return {
+        x: nodeGroup.left + relPos.x,
+        y: nodeGroup.top + relPos.y,
+      };
     }
 
     return {
-      x: nodeGroup.left + nodeGroup.width / 2,
-      y: nodeGroup.top + nodeGroup.height / 2,
+      x: nodeGroup.left + (nodeGroup.width || 120) / 2,
+      y: nodeGroup.top + (nodeGroup.height || 50) / 2,
     };
   };
 
