@@ -1,4 +1,4 @@
-import { Canvas as FabricCanvas, Group, Line, loadSVGFromString, Rect } from "fabric";
+import { Canvas as FabricCanvas, Group, loadSVGFromString, Polyline, Rect } from "fabric";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchTemplateDrawing } from "../services/api";
@@ -32,7 +32,6 @@ export function Canvas({
     lastPosY: 0,
   });
 
-  // Persistent reference to viewport transform matrix across all selection events
   const viewportTransformRef = useRef([1, 0, 0, 1, 0, 0]);
 
   // Isolated local debug info state
@@ -145,7 +144,7 @@ export function Canvas({
       opt.e.stopPropagation();
     });
 
-    // Mouse move handler (handles pan & wire rubberband & HUD)
+    // Mouse move handler (handles pan & 90-degree orthogonal wire rubberband & HUD)
     canvas.on("mouse:move", (opt) => {
       const pointer = canvas.getScenePoint(opt.e);
       const evt = opt.e;
@@ -195,12 +194,13 @@ export function Canvas({
       });
 
       if (wiringStateRef.current.active && wiringStateRef.current.tempLine) {
-        wiringStateRef.current.tempLine.set({ x2: pointer.x, y2: pointer.y });
+        const startPos = wiringStateRef.current.startPos;
+        const orthoPoints = calculateOrthogonalPoints(startPos, pointer);
+        wiringStateRef.current.tempLine.set({ points: orthoPoints });
         canvas.requestRenderAll();
       }
     });
 
-    // Enforce viewport transform lock during selection events
     const lockViewportTransform = () => {
       if (canvas && !canvas.isDisposed && viewportTransformRef.current) {
         canvas.setViewportTransform(viewportTransformRef.current);
@@ -216,7 +216,6 @@ export function Canvas({
       lockViewportTransform();
       const evt = opt.e;
 
-      // Enable canvas panning via Middle Click or Alt/Option Click or Spacebar
       if (evt.button === 1 || evt.altKey) {
         panStateRef.current = {
           isPanning: true,
@@ -257,14 +256,20 @@ export function Canvas({
           opt.e.stopPropagation();
 
           if (!wiringStateRef.current.active) {
+            const orthoPoints = calculateOrthogonalPoints(portAbsPos, pointer);
+
             wiringStateRef.current = {
               active: true,
               srcNodeId: node.id,
               srcPortId: clickedPortId,
-              tempLine: new Line([portAbsPos.x, portAbsPos.y, pointer.x, pointer.y], {
+              startPos: portAbsPos,
+              tempLine: new Polyline(orthoPoints, {
                 stroke: "#3b82f6",
                 strokeWidth: 3,
+                fill: "transparent",
                 strokeDashArray: [6, 4],
+                strokeLineJoin: "round",
+                strokeLineCap: "round",
                 selectable: false,
                 evented: false,
               }),
@@ -297,7 +302,6 @@ export function Canvas({
       }
     });
 
-    // Mouse up handler
     canvas.on("mouse:up", () => {
       lockViewportTransform();
       if (panStateRef.current.isPanning) {
@@ -355,7 +359,7 @@ export function Canvas({
         nodeGroup.on("moving", () => {
           node.x = nodeGroup.left;
           node.y = nodeGroup.top;
-          updateWirePositions(canvas, nodes, wires, nodeGroupsMap);
+          updateWirePositions(canvas, nodes, wires, nodeGroupsMap, onDeleteWire);
         });
 
         canvas.add(nodeGroup);
@@ -443,6 +447,31 @@ export function Canvas({
   );
 }
 
+// Manhattan 90-degree orthogonal polyline point calculation algorithm
+function calculateOrthogonalPoints(p1, p2) {
+  const x1 = p1.x;
+  const y1 = p1.y;
+  const x2 = p2.x;
+  const y2 = p2.y;
+
+  // Exit offset downwards from device port anchor
+  const exitOffsetY = 20;
+
+  const exitY1 = y1 + exitOffsetY;
+  const enterY2 = Math.abs(y2 - y1) > 40 ? y2 + (y2 < y1 ? exitOffsetY : -exitOffsetY) : y2;
+
+  const midY = (exitY1 + enterY2) / 2;
+
+  return [
+    { x: x1, y: y1 },
+    { x: x1, y: exitY1 },
+    { x: x1, y: midY },
+    { x: x2, y: midY },
+    { x: x2, y: enterY2 },
+    { x: x2, y: y2 },
+  ];
+}
+
 function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 45) {
   const nodeData = nodeGroup.nodeData;
   if (!nodeData?.ports) return null;
@@ -467,7 +496,7 @@ function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 45) 
 function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire) {
   if (!canvas || canvas.isDisposed) return;
 
-  const existingLines = canvas.getObjects("line").filter((obj) => obj.isWireLine);
+  const existingLines = canvas.getObjects().filter((obj) => obj.isWireLine);
   for (const lineObj of existingLines) {
     canvas.remove(lineObj);
   }
@@ -481,23 +510,31 @@ function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire)
       const p2 = dstGroup.getPortAbsPosition(wire.dstPortId);
 
       if (p1 && p2) {
-        const wireLine = new Line([p1.x, p1.y, p2.x, p2.y], {
-          stroke: "#10b981",
+        const orthoPoints = calculateOrthogonalPoints(p1, p2);
+
+        const wirePolyline = new Polyline(orthoPoints, {
+          stroke: wire.tzspTarget ? "#f59e0b" : "#10b981",
           strokeWidth: 3,
+          fill: "transparent",
+          strokeLineJoin: "round",
+          strokeLineCap: "round",
           selectable: true,
+          hasBorders: false,
           hasControls: false,
+          objectCaching: false,
         });
-        wireLine.isWireLine = true;
-        wireLine.wireData = wire;
+        wirePolyline.isWireLine = true;
+        wirePolyline.wireData = wire;
 
         if (onDeleteWire) {
-          wireLine.on("mousedblclick", () => {
+          wirePolyline.on("mousedblclick", () => {
+            console.log("[NETLAB-WIRE-DEBUG] Double-clicked orthogonal wire to delete:", wire.id);
             onDeleteWire(wire.id);
           });
         }
 
-        canvas.add(wireLine);
-        canvas.sendObjectToBack(wireLine);
+        canvas.add(wirePolyline);
+        canvas.sendObjectToBack(wirePolyline);
       }
     }
   }
