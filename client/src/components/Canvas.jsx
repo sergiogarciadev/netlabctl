@@ -43,10 +43,121 @@ export function Canvas({
 
   const viewportTransformRef = useRef([1, 0, 0, 1, 0, 0]);
   const wirePolylineMapRef = useRef(new Map());
+  const wireStatsRef = useRef([]);
 
   // Isolated local debug info state
   const [debugInfo, setDebugInfo] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(100);
+
+  useEffect(() => {
+    wireStatsRef.current = wireStats;
+  }, [wireStats]);
+
+  // Helper function to animate packet circle along polyline points array
+  const triggerCircleAnimation = useCallback((canvas, points, count, isReverse) => {
+    if (!canvas || canvas.isDisposed || !points || points.length < 2 || count <= 0) return;
+
+    const wireStrokeWidth = 3;
+    const logFactor = Math.floor(Math.log10(Math.max(1, count)));
+    const sizeMultiplier = 2 + logFactor;
+    const radius = Math.max(4, (sizeMultiplier * wireStrokeWidth) / 1.5);
+
+    const pathPoints = isReverse ? [...points].reverse() : points;
+    const startPt = pathPoints[0];
+
+    const packetCircle = new Circle({
+      left: startPt.x,
+      top: startPt.y,
+      radius: radius,
+      fill: isReverse ? "#ff007f" : "#00f3ff",
+      stroke: "#ffffff",
+      strokeWidth: 1.5,
+      shadow: new Shadow({
+        color: isReverse ? "#ff007f" : "#00f3ff",
+        blur: 14,
+      }),
+      originX: "center",
+      originY: "center",
+      selectable: false,
+      evented: false,
+      opacity: 1,
+    });
+
+    canvas.add(packetCircle);
+    canvas.bringObjectToFront(packetCircle);
+
+    const segments = [];
+    let totalDistance = 0;
+    for (let i = 0; i < pathPoints.length - 1; i++) {
+      const pA = pathPoints[i];
+      const pB = pathPoints[i + 1];
+      const dx = pB.x - pA.x;
+      const dy = pB.y - pA.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      segments.push({ pA, pB, dx, dy, len });
+      totalDistance += len;
+    }
+
+    if (totalDistance === 0) {
+      canvas.remove(packetCircle);
+      return;
+    }
+
+    const duration = 700; // 700ms smooth animation speed
+    const startTime = performance.now();
+
+    const step = (now) => {
+      if (canvas.isDisposed) return;
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+
+      const currentDist = progress * totalDistance;
+      let accumulated = 0;
+      let curX = startPt.x;
+      let curY = startPt.y;
+
+      for (const seg of segments) {
+        if (currentDist <= accumulated + seg.len) {
+          const segProgress = (currentDist - accumulated) / (seg.len || 1);
+          curX = seg.pA.x + segProgress * seg.dx;
+          curY = seg.pA.y + segProgress * seg.dy;
+          break;
+        }
+        accumulated += seg.len;
+      }
+
+      packetCircle.set({
+        left: curX,
+        top: curY,
+        opacity: progress > 0.85 ? (1 - progress) / 0.15 : 1,
+      });
+      canvas.requestRenderAll();
+
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      } else {
+        canvas.remove(packetCircle);
+        canvas.requestRenderAll();
+      }
+    };
+
+    requestAnimationFrame(step);
+  }, []);
+
+  const handleTestPulseWire = useCallback(
+    (wireId) => {
+      const canvas = fabricCanvasRef.current;
+      if (!canvas || canvas.isDisposed) return;
+      const wireInfo = wirePolylineMapRef.current.get(wireId);
+      if (!wireInfo?.points || wireInfo.points.length < 2) return;
+
+      triggerCircleAnimation(canvas, wireInfo.points, 1, false);
+      setTimeout(() => {
+        triggerCircleAnimation(canvas, wireInfo.points, 10, true);
+      }, 350);
+    },
+    [triggerCircleAnimation],
+  );
 
   // Packet Flow Animation Ticker based on Managed Network packet events
   useEffect(() => {
@@ -57,112 +168,17 @@ export function Canvas({
       const wireInfo = wirePolylineMapRef.current.get(stat.wireId);
       if (!wireInfo?.points || wireInfo.points.length < 2) return;
 
-      const points = wireInfo.points;
-      const wireStrokeWidth = 3; // Base wire stroke width
-
-      // Helper function to animate packet circle along points array
-      const triggerCircleAnimation = (count, isReverse) => {
-        if (count <= 0) return;
-
-        // Size formula: starts at double of wire size (2x), increases by 1x for each log10 step
-        const logFactor = Math.floor(Math.log10(Math.max(1, count)));
-        const sizeMultiplier = 2 + logFactor;
-        const radius = (sizeMultiplier * wireStrokeWidth) / 2;
-
-        const pathPoints = isReverse ? [...points].reverse() : points;
-        const startPt = pathPoints[0];
-
-        // Create glowing animated packet circle on Fabric.js canvas
-        const packetCircle = new Circle({
-          left: startPt.x,
-          top: startPt.y,
-          radius: radius,
-          fill: isReverse ? "#f43f5e" : "#38bdf8",
-          shadow: new Shadow({
-            color: isReverse ? "#f43f5e" : "#38bdf8",
-            blur: 8,
-          }),
-          originX: "center",
-          originY: "center",
-          selectable: false,
-          evented: false,
-          opacity: 1,
-        });
-
-        canvas.add(packetCircle);
-
-        // Precompute path segments and total distance
-        const segments = [];
-        let totalDistance = 0;
-        for (let i = 0; i < pathPoints.length - 1; i++) {
-          const pA = pathPoints[i];
-          const pB = pathPoints[i + 1];
-          const dx = pB.x - pA.x;
-          const dy = pB.y - pA.y;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          segments.push({ pA, pB, dx, dy, len });
-          totalDistance += len;
-        }
-
-        if (totalDistance === 0) {
-          canvas.remove(packetCircle);
-          return;
-        }
-
-        const duration = 500; // 500ms smooth animation speed across wire
-        const startTime = performance.now();
-
-        const step = (now) => {
-          if (canvas.isDisposed) return;
-          const elapsed = now - startTime;
-          const progress = Math.min(1, elapsed / duration);
-
-          const currentDist = progress * totalDistance;
-          let accumulated = 0;
-          let curX = startPt.x;
-          let curY = startPt.y;
-
-          for (const seg of segments) {
-            if (currentDist <= accumulated + seg.len) {
-              const segProgress = (currentDist - accumulated) / (seg.len || 1);
-              curX = seg.pA.x + segProgress * seg.dx;
-              curY = seg.pA.y + segProgress * seg.dy;
-              break;
-            }
-            accumulated += seg.len;
-          }
-
-          packetCircle.set({
-            left: curX,
-            top: curY,
-            opacity: progress > 0.8 ? (1 - progress) / 0.2 : 1,
-          });
-          canvas.requestRenderAll();
-
-          if (progress < 1) {
-            requestAnimationFrame(step);
-          } else {
-            canvas.remove(packetCircle);
-            canvas.requestRenderAll();
-          }
-        };
-
-        requestAnimationFrame(step);
-      };
-
-      // Trigger forward flow animation (Src -> Dst)
       const fwdCount = stat.srcToDst100ms || (stat.count > 0 ? stat.count : 0);
       if (fwdCount > 0) {
-        triggerCircleAnimation(fwdCount, false);
+        triggerCircleAnimation(canvas, wireInfo.points, fwdCount, false);
       }
 
-      // Trigger reverse flow animation (Dst -> Src)
       const revCount = stat.dstToSrc100ms || 0;
       if (revCount > 0) {
-        triggerCircleAnimation(revCount, true);
+        triggerCircleAnimation(canvas, wireInfo.points, revCount, true);
       }
     });
-  }, [wireStats]);
+  }, [wireStats, triggerCircleAnimation]);
 
   const cancelWiring = useCallback(() => {
     const canvas = fabricCanvasRef.current;
@@ -309,12 +325,79 @@ export function Canvas({
         }
       }
 
+      let hoveredWire = null;
+      if (target?.isWireLine && target.wireData) {
+        const wire = target.wireData;
+        const stat = (wireStatsRef.current || []).find((s) => s.wireId === wire.id);
+        hoveredWire = {
+          id: wire.id,
+          srcNodeId: wire.srcNodeId,
+          srcPortId: wire.srcPortId,
+          dstNodeId: wire.dstNodeId,
+          dstPortId: wire.dstPortId,
+          packets100ms: stat?.count || 0,
+          srcToDst100ms: stat?.srcToDst100ms || 0,
+          dstToSrc100ms: stat?.dstToSrc100ms || 0,
+          totalPackets: stat?.totalPackets || 0,
+          totalBytes: stat?.bytes || 0,
+          delayMs: wire.conditions?.delayMs || 0,
+          jitterMs: wire.conditions?.jitterMs || 0,
+          lossPercent: wire.conditions?.lossPercent || 0,
+          tzspTarget: wire.tzspTarget || "",
+        };
+      } else {
+        for (const obj of canvas.getObjects()) {
+          if (obj.isWireLine && obj.wireData) {
+            const wire = obj.wireData;
+            const wireInfo = wirePolylineMapRef.current.get(wire.id);
+            const points = wireInfo?.points || obj.points || [];
+            let isNear = false;
+            for (let i = 0; i < points.length - 1; i++) {
+              const d = pointToSegmentDistance(
+                pointer.x,
+                pointer.y,
+                points[i].x,
+                points[i].y,
+                points[i + 1].x,
+                points[i + 1].y,
+              );
+              if (d < 15) {
+                isNear = true;
+                break;
+              }
+            }
+            if (isNear) {
+              const stat = (wireStatsRef.current || []).find((s) => s.wireId === wire.id);
+              hoveredWire = {
+                id: wire.id,
+                srcNodeId: wire.srcNodeId,
+                srcPortId: wire.srcPortId,
+                dstNodeId: wire.dstNodeId,
+                dstPortId: wire.dstPortId,
+                packets100ms: stat?.count || 0,
+                srcToDst100ms: stat?.srcToDst100ms || 0,
+                dstToSrc100ms: stat?.dstToSrc100ms || 0,
+                totalPackets: stat?.totalPackets || 0,
+                totalBytes: stat?.bytes || 0,
+                delayMs: wire.conditions?.delayMs || 0,
+                jitterMs: wire.conditions?.jitterMs || 0,
+                lossPercent: wire.conditions?.lossPercent || 0,
+                tzspTarget: wire.tzspTarget || "",
+              };
+              break;
+            }
+          }
+        }
+      }
+
       setDebugInfo({
         activeTool,
         pointer,
         nodeId,
         subTargetTag,
         nearestPort,
+        hoveredWire,
+        onTestPulseWire: handleTestPulseWire,
         isWiring: wiringStateRef.current.active,
         srcPortId: wiringStateRef.current.srcPortId,
       });
@@ -1056,4 +1139,12 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   };
 
   return nodeGroup;
+}
+
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+  const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+  if (l2 === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
 }

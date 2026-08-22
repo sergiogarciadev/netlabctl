@@ -1,4 +1,4 @@
-import { Bug, ChevronDown, Crosshair, X } from "lucide-react";
+import { Activity, Bug, ChevronDown, Crosshair, Play, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function DebugPanel({ debugInfo }) {
@@ -204,6 +204,86 @@ export function DebugPanel({ debugInfo }) {
             <div style={{ color: "#ef4444", marginTop: "2px" }}>
               No port detected within threshold
             </div>
+          )}
+        </div>
+
+        {/* Hovered Wire Inspection */}
+        <div style={{ marginTop: "6px", paddingTop: "6px", borderTop: "1px stroke #1e293b" }}>
+          <div
+            style={{
+              fontWeight: 600,
+              color: "#3b82f6",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+            }}
+          >
+            <Activity size={12} /> Wire Under Cursor:
+          </div>
+          {debugInfo.hoveredWire ? (
+            <div
+              style={{
+                marginTop: "2px",
+                background: "rgba(59, 130, 246, 0.1)",
+                padding: "6px",
+                borderRadius: "4px",
+                border: "1px solid rgba(59, 130, 246, 0.3)",
+              }}
+            >
+              <div>
+                <span style={{ color: "#94a3b8" }}>ID:</span>{" "}
+                <strong style={{ color: "#60a5fa" }}>{debugInfo.hoveredWire.id}</strong>
+              </div>
+              <div>
+                <span style={{ color: "#94a3b8" }}>Endpoints:</span>{" "}
+                <span style={{ color: "#f8fafc" }}>
+                  {debugInfo.hoveredWire.srcNodeId}:{debugInfo.hoveredWire.srcPortId} ↔{" "}
+                  {debugInfo.hoveredWire.dstNodeId}:{debugInfo.hoveredWire.dstPortId}
+                </span>
+              </div>
+              <div>
+                <span style={{ color: "#94a3b8" }}>Live 100ms Traffic:</span>{" "}
+                <span style={{ color: "#10b981", fontWeight: 600 }}>
+                  {debugInfo.hoveredWire.packets100ms} pkts (→ {debugInfo.hoveredWire.srcToDst100ms}
+                  , ← {debugInfo.hoveredWire.dstToSrc100ms})
+                </span>
+              </div>
+              <div>
+                <span style={{ color: "#94a3b8" }}>Conditions:</span> Delay{" "}
+                {debugInfo.hoveredWire.delayMs}ms | Loss {debugInfo.hoveredWire.lossPercent}%
+              </div>
+              {debugInfo.hoveredWire.tzspTarget && (
+                <div>
+                  <span style={{ color: "#94a3b8" }}>TZSP:</span>{" "}
+                  <span style={{ color: "#f59e0b" }}>{debugInfo.hoveredWire.tzspTarget}</span>
+                </div>
+              )}
+              {debugInfo.onTestPulseWire && (
+                <button
+                  type="button"
+                  onClick={() => debugInfo.onTestPulseWire(debugInfo.hoveredWire.id)}
+                  style={{
+                    marginTop: "6px",
+                    width: "100%",
+                    padding: "3px 6px",
+                    fontSize: "0.72rem",
+                    background: "#3b82f6",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <Play size={10} /> Test Animation Pulse
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ color: "#64748b", marginTop: "2px" }}>No wire hovered</div>
           )}
         </div>
 
