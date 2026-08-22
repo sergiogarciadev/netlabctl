@@ -1,6 +1,7 @@
 import { Canvas as FabricCanvas, Group, Line, loadSVGFromString, Rect } from "fabric";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchTemplateDrawing } from "../services/api";
+import { DebugPanel } from "./DebugPanel";
 
 const svgCache = new Map();
 
@@ -13,7 +14,6 @@ export function Canvas({
   onAddWire,
   onDeleteWire,
   onDeleteNode,
-  onDebugUpdate,
 }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -24,6 +24,9 @@ export function Canvas({
     srcPortId: null,
     tempLine: null,
   });
+
+  // Isolated local debug info state - does NOT re-render parent App!
+  const [debugInfo, setDebugInfo] = useState(null);
 
   const cancelWiring = useCallback(() => {
     const canvas = fabricCanvasRef.current;
@@ -80,7 +83,7 @@ export function Canvas({
     };
     window.addEventListener("keydown", handleKeyDown);
 
-    // Mouse move handler for live HUD & wire rubberband
+    // Mouse move handler - updates ONLY local Canvas debug HUD without re-rendering parent App!
     canvas.on("mouse:move", (opt) => {
       const pointer = canvas.getScenePoint(opt.e);
       const target = opt.target;
@@ -95,7 +98,6 @@ export function Canvas({
         subTargetTag = subTarget?.id || subTarget?.portId || subTarget?.type;
         nearestPort = findClosestPortInNode(target, pointer.x, pointer.y, 45);
       } else {
-        // Search all nodes for proximity if target wasn't directly hit
         for (const obj of canvas.getObjects()) {
           if (obj.isNodeGroup) {
             const near = findClosestPortInNode(obj, pointer.x, pointer.y, 35);
@@ -107,17 +109,15 @@ export function Canvas({
         }
       }
 
-      if (onDebugUpdate) {
-        onDebugUpdate({
-          activeTool,
-          pointer,
-          nodeId,
-          subTargetTag,
-          nearestPort,
-          isWiring: wiringStateRef.current.active,
-          srcPortId: wiringStateRef.current.srcPortId,
-        });
-      }
+      setDebugInfo({
+        activeTool,
+        pointer,
+        nodeId,
+        subTargetTag,
+        nearestPort,
+        isWiring: wiringStateRef.current.active,
+        srcPortId: wiringStateRef.current.srcPortId,
+      });
 
       if (wiringStateRef.current.active && wiringStateRef.current.tempLine) {
         wiringStateRef.current.tempLine.set({ x2: pointer.x, y2: pointer.y });
@@ -131,23 +131,12 @@ export function Canvas({
       const subTarget = opt.subTarget;
       const pointer = canvas.getScenePoint(opt.e);
 
-      console.log("[NETLAB-WIRE-DEBUG] mouse:down event", {
-        activeTool,
-        targetType: target?.type,
-        isNodeGroup: target?.isNodeGroup,
-        nodeId: target?.nodeData?.id,
-        subTargetId: subTarget?.id,
-        subTargetPortId: subTarget?.portId,
-        pointer,
-      });
-
       let targetNodeGroup = target?.isNodeGroup ? target : null;
       let nearPort = null;
 
       if (targetNodeGroup) {
         nearPort = findClosestPortInNode(targetNodeGroup, pointer.x, pointer.y, 45);
       } else {
-        // Global canvas search for port near pointer
         for (const obj of canvas.getObjects()) {
           if (obj.isNodeGroup) {
             const hit = findClosestPortInNode(obj, pointer.x, pointer.y, 35);
@@ -164,24 +153,10 @@ export function Canvas({
         const portAbsPos = nearPort.absPos;
         const node = targetNodeGroup.nodeData;
 
-        console.log("[NETLAB-WIRE-DEBUG] PORT CLICK DETECTED:", {
-          clickedPortId,
-          portAbsPos,
-          nodeId: node.id,
-          activeTool,
-          isWiringActive: wiringStateRef.current.active,
-        });
-
         if (activeTool === "wire" || subTarget?.portId || wiringStateRef.current.active) {
           opt.e.stopPropagation();
 
           if (!wiringStateRef.current.active) {
-            console.log("[NETLAB-WIRE-DEBUG] STARTING WIRE from:", {
-              nodeId: node.id,
-              portId: clickedPortId,
-              startPos: portAbsPos,
-            });
-
             wiringStateRef.current = {
               active: true,
               srcNodeId: node.id,
@@ -197,17 +172,8 @@ export function Canvas({
             canvas.add(wiringStateRef.current.tempLine);
           } else {
             const { srcNodeId, srcPortId } = wiringStateRef.current;
-            console.log("[NETLAB-WIRE-DEBUG] COMPLETING WIRE:", {
-              srcNodeId,
-              srcPortId,
-              dstNodeId: node.id,
-              dstPortId: clickedPortId,
-            });
-
             if (srcNodeId !== node.id || srcPortId !== clickedPortId) {
               onAddWire(srcNodeId, srcPortId, node.id, clickedPortId);
-            } else {
-              console.warn("[NETLAB-WIRE-DEBUG] Connection rejected: Same port clicked twice.");
             }
             cancelWiring();
           }
@@ -222,16 +188,11 @@ export function Canvas({
         }
 
         if (target?.isNodeGroup) {
-          console.log("[NETLAB-WIRE-DEBUG] Selected Node:", target.nodeData.id);
           onSelectNode(target.nodeData);
         } else if (!target) {
-          console.log("[NETLAB-WIRE-DEBUG] Clicked canvas background, clearing selection.");
           onSelectNode(null);
         }
       } else if (activeTool === "wire" && wiringStateRef.current.active) {
-        console.log(
-          "[NETLAB-WIRE-DEBUG] Clicked background during wire mode, canceling temp wire.",
-        );
         cancelWiring();
       }
     });
@@ -243,17 +204,9 @@ export function Canvas({
         fabricCanvasRef.current.dispose();
       }
     };
-  }, [
-    cancelWiring,
-    onSelectNode,
-    onAddWire,
-    onDeleteWire,
-    onDeleteNode,
-    activeTool,
-    onDebugUpdate,
-  ]);
+  }, [cancelWiring, onSelectNode, onAddWire, onDeleteWire, onDeleteNode, activeTool]);
 
-  // Sync Nodes and Wires on Canvas with disposed canvas guard
+  // Sync Nodes and Wires on Canvas - ONLY runs when nodes or wires length / references change
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas || canvas.isDisposed) return;
@@ -263,12 +216,6 @@ export function Canvas({
     const nodeGroupsMap = new Map();
 
     const renderAll = async () => {
-      console.log("[NETLAB-WIRE-DEBUG] Syncing canvas objects...", {
-        nodesCount: nodes.length,
-        wiresCount: wires.length,
-        activeTool,
-      });
-
       for (const tmpl of templates) {
         if (!svgCache.has(tmpl.id)) {
           try {
@@ -292,6 +239,7 @@ export function Canvas({
         const nodeGroup = await createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool);
         if (isCancelled || canvas.isDisposed) return;
 
+        // Smooth 60FPS dragging - updates line positions in-place without canvas clearing
         nodeGroup.on("moving", () => {
           node.x = nodeGroup.left;
           node.y = nodeGroup.top;
@@ -318,11 +266,11 @@ export function Canvas({
   return (
     <div className="canvas-wrapper" ref={containerRef}>
       <canvas ref={canvasRef} id="netlab-canvas" />
+      <DebugPanel debugInfo={debugInfo} />
     </div>
   );
 }
 
-// Proximity helper using exact relative port positions
 function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 45) {
   const nodeData = nodeGroup.nodeData;
   if (!nodeData?.ports) return null;
@@ -372,7 +320,6 @@ function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire)
 
         if (onDeleteWire) {
           wireLine.on("mousedblclick", () => {
-            console.log("[NETLAB-WIRE-DEBUG] Double-clicked wire to delete:", wire.id);
             onDeleteWire(wire.id);
           });
         }
@@ -487,11 +434,8 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   nodeGroup.isNodeGroup = true;
   nodeGroup.nodeData = node;
 
-  // Pre-calculate deterministic relative port anchor positions for this device template
   nodeGroup.portRelativePositions = new Map();
   nodePorts.forEach((port, idx) => {
-    // Standard Mikrotik & device port layout math relative to group top-left (0,0)
-    // Container at x=13, y=30. Each port width=20, spacing=25. Port center: x = 13 + (idx * 25) + 10 = 23 + idx*25, y = 30 + 8 = 38
     const relX = 23 + idx * 25;
     const relY = 38;
     nodeGroup.portRelativePositions.set(port.id, { x: relX, y: relY });

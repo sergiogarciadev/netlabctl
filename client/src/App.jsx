@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddDeviceModal } from "./components/AddDeviceModal";
 import { Canvas } from "./components/Canvas";
-import { DebugPanel } from "./components/DebugPanel";
 import { Sidebar } from "./components/Sidebar";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { Toolbar } from "./components/Toolbar";
@@ -26,7 +25,6 @@ export function App() {
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [activeTool, setActiveTool] = useState("select");
-  const [debugInfo, setDebugInfo] = useState(null);
 
   // History State Stack for Undo / Redo
   const historyRef = useRef([]);
@@ -275,7 +273,6 @@ export function App() {
           onAddWire={handleAddWire}
           onDeleteWire={handleDeleteWire}
           onDeleteNode={handleDeleteNode}
-          onDebugUpdate={(info) => setDebugInfo(info)}
         />
 
         <Sidebar
@@ -293,8 +290,6 @@ export function App() {
           onClose={() => setIsAddDeviceOpen(false)}
           onSelectTemplate={handleAddNodeFromTemplate}
         />
-
-        <DebugPanel debugInfo={debugInfo} />
 
         {activeTerminalNode && (
           <TerminalWindow
