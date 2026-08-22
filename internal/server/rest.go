@@ -192,6 +192,10 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		Name:       nodeName,
 		X:          req.X,
 		Y:          req.Y,
+		Memory:     tmpl.Memory,
+		SMP:        tmpl.GetSMP(),
+		Userdata:   tmpl.Userdata,
+		Metadata:   tmpl.Metadata,
 		Ports:      ports,
 	}
 

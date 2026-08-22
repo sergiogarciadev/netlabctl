@@ -221,6 +221,15 @@ export function App() {
     commitProjectUpdate(updatedProject, true);
   };
 
+  const handleUpdateWire = async (updatedWire) => {
+    console.log("[NETLAB-APP-DEBUG] Updating wire:", updatedWire);
+    const updatedWires = (project.wires || []).map((w) =>
+      w.id === updatedWire.id ? updatedWire : w,
+    );
+    const updatedProject = { ...project, wires: updatedWires };
+    commitProjectUpdate(updatedProject, true);
+  };
+
   const handleUpdateNode = async (updatedNode) => {
     console.log("[NETLAB-APP-DEBUG] Updating node:", updatedNode);
     const updatedNodes = (project.nodes || []).map((n) =>
@@ -279,9 +288,12 @@ export function App() {
           selectedNode={selectedNode}
           onClose={() => setSelectedNode(null)}
           templates={templates}
+          nodes={project.nodes || []}
+          wires={project.wires || []}
           onOpenTerminal={(node) => setActiveTerminalNode(node)}
           onUpdateNode={handleUpdateNode}
           onDeleteNode={handleDeleteNode}
+          onUpdateWire={handleUpdateWire}
         />
 
         <AddDeviceModal

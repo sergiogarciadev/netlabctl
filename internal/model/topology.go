@@ -15,6 +15,10 @@ type Node struct {
 	Name       string                 `json:"name"`
 	X          float64                `json:"x"`
 	Y          float64                `json:"y"`
+	Memory     int                    `json:"memory,omitempty"`
+	SMP        int                    `json:"smp,omitempty"`
+	Userdata   string                 `json:"userdata,omitempty"`
+	Metadata   string                 `json:"metadata,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 	Ports      []NodePort             `json:"ports"`
 }
