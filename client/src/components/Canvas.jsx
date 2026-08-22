@@ -29,6 +29,7 @@ export function Canvas({
     if (wiringStateRef.current.tempLine && canvas) {
       canvas.remove(wiringStateRef.current.tempLine);
     }
+    console.log("[NETLAB-WIRE-DEBUG] Wiring canceled/reset.");
     wiringStateRef.current = { active: false, srcNodeId: null, srcPortId: null, tempLine: null };
     if (canvas) canvas.requestRenderAll();
   }, []);
@@ -39,6 +40,8 @@ export function Canvas({
 
     const width = containerRef.current.clientWidth;
     const height = containerRef.current.clientHeight;
+
+    console.log("[NETLAB-WIRE-DEBUG] Initializing Fabric Canvas:", { width, height, activeTool });
 
     const canvas = new FabricCanvas(canvasRef.current, {
       width,
@@ -60,13 +63,14 @@ export function Canvas({
     };
     window.addEventListener("resize", handleResize);
 
-    // Keyboard listener for Delete / Backspace key to remove selected device or wire
     const handleKeyDown = (e) => {
       if (e.key === "Delete" || e.key === "Backspace") {
         const activeObj = canvas.getActiveObject();
         if (activeObj?.isNodeGroup && onDeleteNode) {
+          console.log("[NETLAB-WIRE-DEBUG] Delete key pressed for node:", activeObj.nodeData.id);
           onDeleteNode(activeObj.nodeData.id);
         } else if (activeObj?.isWireLine && onDeleteWire) {
+          console.log("[NETLAB-WIRE-DEBUG] Delete key pressed for wire:", activeObj.wireData.id);
           onDeleteWire(activeObj.wireData.id);
         }
       } else if (e.key === "Escape") {
@@ -75,64 +79,91 @@ export function Canvas({
     };
     window.addEventListener("keydown", handleKeyDown);
 
-    // Click handler strictly honoring activeTool
+    // Mouse down handler for device selection & port wiring
     canvas.on("mouse:down", (opt) => {
       const target = opt.target;
       const subTarget = opt.subTarget;
       const pointer = canvas.getScenePoint(opt.e);
 
-      // WIRE TOOL MODE ONLY
-      if (activeTool === "wire") {
-        if (target?.isNodeGroup) {
-          let clickedPortId = subTarget?.portId;
-          let portAbsPos = null;
+      console.log("[NETLAB-WIRE-DEBUG] mouse:down event", {
+        activeTool,
+        targetType: target?.type,
+        isNodeGroup: target?.isNodeGroup,
+        nodeId: target?.nodeData?.id,
+        subTargetId: subTarget?.id,
+        subTargetPortId: subTarget?.portId,
+        pointer,
+      });
 
-          if (clickedPortId) {
-            portAbsPos = target.getPortAbsPosition(clickedPortId);
+      if (target?.isNodeGroup) {
+        let clickedPortId = subTarget?.portId || subTarget?.group?.portId;
+        let portAbsPos = null;
+
+        if (clickedPortId) {
+          portAbsPos = target.getPortAbsPosition(clickedPortId);
+        } else {
+          // Check proximity to any port anchor
+          const nearPort = findClosestPortInNode(target, pointer.x, pointer.y);
+          if (nearPort) {
+            clickedPortId = nearPort.portId;
+            portAbsPos = nearPort.absPos;
+            console.log("[NETLAB-WIRE-DEBUG] Found port by proximity:", nearPort);
+          }
+        }
+
+        console.log("[NETLAB-WIRE-DEBUG] Port detection result:", {
+          clickedPortId,
+          portAbsPos,
+          isWiringActive: wiringStateRef.current.active,
+        });
+
+        // Trigger wiring if in "wire" tool mode OR if a port was clicked directly
+        if (
+          clickedPortId &&
+          portAbsPos &&
+          (activeTool === "wire" || subTarget?.portId || wiringStateRef.current.active)
+        ) {
+          opt.e.stopPropagation();
+          const node = target.nodeData;
+
+          if (!wiringStateRef.current.active) {
+            console.log("[NETLAB-WIRE-DEBUG] STARTING WIRE from:", {
+              nodeId: node.id,
+              portId: clickedPortId,
+              startPos: portAbsPos,
+            });
+
+            wiringStateRef.current = {
+              active: true,
+              srcNodeId: node.id,
+              srcPortId: clickedPortId,
+              tempLine: new Line([portAbsPos.x, portAbsPos.y, pointer.x, pointer.y], {
+                stroke: "#3b82f6",
+                strokeWidth: 3,
+                strokeDashArray: [6, 4],
+                selectable: false,
+                evented: false,
+              }),
+            };
+            canvas.add(wiringStateRef.current.tempLine);
           } else {
-            const nearPort = findClosestPortInNode(target, pointer.x, pointer.y);
-            if (nearPort) {
-              clickedPortId = nearPort.portId;
-              portAbsPos = nearPort.absPos;
-            }
-          }
+            const { srcNodeId, srcPortId } = wiringStateRef.current;
+            console.log("[NETLAB-WIRE-DEBUG] COMPLETING WIRE:", {
+              srcNodeId,
+              srcPortId,
+              dstNodeId: node.id,
+              dstPortId: clickedPortId,
+            });
 
-          if (clickedPortId && portAbsPos) {
-            opt.e.stopPropagation();
-            const node = target.nodeData;
-
-            if (!wiringStateRef.current.active) {
-              // Start wire creation
-              wiringStateRef.current = {
-                active: true,
-                srcNodeId: node.id,
-                srcPortId: clickedPortId,
-                tempLine: new Line([portAbsPos.x, portAbsPos.y, pointer.x, pointer.y], {
-                  stroke: "#3b82f6",
-                  strokeWidth: 3,
-                  strokeDashArray: [6, 4],
-                  selectable: false,
-                  evented: false,
-                }),
-              };
-              canvas.add(wiringStateRef.current.tempLine);
+            if (srcNodeId !== node.id || srcPortId !== clickedPortId) {
+              onAddWire(srcNodeId, srcPortId, node.id, clickedPortId);
             } else {
-              // Complete wire connection
-              const { srcNodeId, srcPortId } = wiringStateRef.current;
-              if (srcNodeId !== node.id || srcPortId !== clickedPortId) {
-                onAddWire(srcNodeId, srcPortId, node.id, clickedPortId);
-              }
-              cancelWiring();
+              console.warn("[NETLAB-WIRE-DEBUG] Connection rejected: Same port clicked twice.");
             }
-            return;
+            cancelWiring();
           }
+          return;
         }
-
-        // Cancel wiring if clicked outside ports in wire mode
-        if (wiringStateRef.current.active) {
-          cancelWiring();
-        }
-        return;
       }
 
       // SELECT TOOL MODE ONLY
@@ -142,10 +173,17 @@ export function Canvas({
         }
 
         if (target?.isNodeGroup) {
+          console.log("[NETLAB-WIRE-DEBUG] Selected Node:", target.nodeData.id);
           onSelectNode(target.nodeData);
         } else if (!target) {
+          console.log("[NETLAB-WIRE-DEBUG] Clicked canvas background, clearing selection.");
           onSelectNode(null);
         }
+      } else if (activeTool === "wire" && wiringStateRef.current.active) {
+        console.log(
+          "[NETLAB-WIRE-DEBUG] Clicked background during wire mode, canceling temp wire.",
+        );
+        cancelWiring();
       }
     });
 
@@ -165,29 +203,32 @@ export function Canvas({
     };
   }, [cancelWiring, onSelectNode, onAddWire, onDeleteWire, onDeleteNode, activeTool]);
 
-  // Sync Nodes and Wires without screen flickering
+  // Sync Nodes and Wires on Canvas
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
 
     canvas.defaultCursor = activeTool === "wire" ? "crosshair" : "default";
-
     const nodeGroupsMap = new Map();
 
     const renderAll = async () => {
-      // 1. Pre-fetch and cache SVG drawings
+      console.log("[NETLAB-WIRE-DEBUG] Syncing canvas objects...", {
+        nodesCount: nodes.length,
+        wiresCount: wires.length,
+        activeTool,
+      });
+
       for (const tmpl of templates) {
         if (!svgCache.has(tmpl.id)) {
           try {
             const svgStr = await fetchTemplateDrawing(tmpl.id);
             svgCache.set(tmpl.id, svgStr);
           } catch (err) {
-            console.error(`Failed to prefetch SVG for ${tmpl.id}`, err);
+            console.error(`[NETLAB-WIRE-DEBUG] Failed to prefetch SVG for ${tmpl.id}`, err);
           }
         }
       }
 
-      // 2. Clear canvas and rebuild groups synchronously with cached SVGs
       canvas.clear();
       canvas.backgroundColor = "#090d16";
 
@@ -206,9 +247,7 @@ export function Canvas({
         nodeGroupsMap.set(node.id, nodeGroup);
       }
 
-      // 3. Render Wires
       updateWirePositions(canvas, nodes, wires, nodeGroupsMap, onDeleteWire);
-
       canvas.requestRenderAll();
     };
 
@@ -222,8 +261,7 @@ export function Canvas({
   );
 }
 
-// Proximity helper to find port near mouse click
-function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 20) {
+function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 25) {
   const nodeData = nodeGroup.nodeData;
   if (!nodeData?.ports) return null;
 
@@ -233,13 +271,12 @@ function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 20) 
     const dy = absClickY - portPos.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist <= threshold) {
-      return { portId: port.id, absPos: portPos };
+      return { portId: port.id, absPos: portPos, dist };
     }
   }
   return null;
 }
 
-// Update Wire Lines on Canvas between exact SVG port anchor positions
 function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire) {
   const existingLines = canvas.getObjects("line").filter((obj) => obj.isWireLine);
   for (const lineObj of existingLines) {
@@ -265,17 +302,19 @@ function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire)
 
       if (onDeleteWire) {
         wireLine.on("mousedblclick", () => {
+          console.log("[NETLAB-WIRE-DEBUG] Double-clicked wire to delete:", wire.id);
           onDeleteWire(wire.id);
         });
       }
 
       canvas.add(wireLine);
       canvas.sendObjectToBack(wireLine);
+    } else {
+      console.warn("[NETLAB-WIRE-DEBUG] Could not find node groups for wire:", wire);
     }
   }
 }
 
-// Builds Fabric Group with SVG cache and strict tool mode rules
 async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) {
   let svgObjects = [];
 
@@ -286,7 +325,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         svgObjects = parsed.objects.filter((o) => o !== null);
       }
     } catch (e) {
-      console.warn("Failed to parse exact device SVG:", e);
+      console.warn("[NETLAB-WIRE-DEBUG] Failed to parse device SVG:", e);
     }
   }
 
@@ -326,11 +365,24 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         elemId === port.id ||
         elemId === `port-${port.name}` ||
         elemId === `device-port-${port.id}` ||
+        elemId === `device-port-${port.name}` ||
         elemId.endsWith(port.id);
 
       if (isMatch) {
         obj.portId = port.id;
-        obj.hoverCursor = activeTool === "wire" ? "crosshair" : "default";
+        obj.hoverCursor = activeTool === "wire" ? "crosshair" : "pointer";
+
+        // Propagate portId to all nested child objects in group!
+        if (obj._objects && Array.isArray(obj._objects)) {
+          const tagChildren = (children) => {
+            for (const child of children) {
+              child.portId = port.id;
+              child.hoverCursor = activeTool === "wire" ? "crosshair" : "pointer";
+              if (child._objects) tagChildren(child._objects);
+            }
+          };
+          tagChildren(obj._objects);
+        }
 
         const isConnected = wires.some(
           (w) =>
@@ -363,7 +415,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   const nodeGroup = new Group(svgObjects, {
     left: node.x,
     top: node.y,
-    selectable: activeTool === "select", // ONLY selectable/movable in Select tool mode
+    selectable: activeTool === "select",
     hasControls: false,
     subTargetCheck: true,
   });

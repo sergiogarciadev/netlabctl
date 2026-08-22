@@ -53,6 +53,7 @@ export function App() {
 
   const commitProjectUpdate = useCallback(
     async (updatedProject, saveToHistory = true) => {
+      console.log("[NETLAB-APP-DEBUG] Committing project update:", updatedProject);
       setProject(updatedProject);
       if (saveToHistory) {
         pushStateToHistory(updatedProject);
@@ -60,7 +61,7 @@ export function App() {
       try {
         await updateProject(updatedProject.id, updatedProject);
       } catch (err) {
-        console.error("Failed to sync project update to server:", err);
+        console.error("[NETLAB-APP-DEBUG] Failed to sync project update to server:", err);
       }
     },
     [pushStateToHistory],
@@ -70,6 +71,7 @@ export function App() {
     if (historyIndexRef.current > 0) {
       historyIndexRef.current -= 1;
       const prevProject = JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current]));
+      console.log("[NETLAB-APP-DEBUG] Performing UNDO to state index:", historyIndexRef.current);
       commitProjectUpdate(prevProject, false);
       updateHistoryButtons();
     }
@@ -79,6 +81,7 @@ export function App() {
     if (historyIndexRef.current < historyRef.current.length - 1) {
       historyIndexRef.current += 1;
       const nextProject = JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current]));
+      console.log("[NETLAB-APP-DEBUG] Performing REDO to state index:", historyIndexRef.current);
       commitProjectUpdate(nextProject, false);
       updateHistoryButtons();
     }
@@ -103,11 +106,15 @@ export function App() {
 
   useEffect(() => {
     fetchTemplates()
-      .then(setTemplates)
-      .catch((err) => console.error("Failed to load templates:", err));
+      .then((tmplList) => {
+        console.log("[NETLAB-APP-DEBUG] Loaded templates:", tmplList);
+        setTemplates(tmplList);
+      })
+      .catch((err) => console.error("[NETLAB-APP-DEBUG] Failed to load templates:", err));
 
     fetchProject("default")
       .then((top) => {
+        console.log("[NETLAB-APP-DEBUG] Loaded project topology:", top);
         setProject(top);
         historyRef.current = [JSON.parse(JSON.stringify(top))];
         historyIndexRef.current = 0;
@@ -130,6 +137,7 @@ export function App() {
 
     const ws = new WSClient((msg) => {
       if (msg.type === "project_state") {
+        console.log("[NETLAB-APP-DEBUG] Received WS project_state:", msg.data);
         setProject(msg.data);
       }
     });
@@ -152,6 +160,7 @@ export function App() {
     try {
       const posX = 100 + (project.nodes?.length || 0) * 160;
       const posY = 150;
+      console.log("[NETLAB-APP-DEBUG] Adding node from template:", tmpl.id, { posX, posY });
       const newNode = await addNodeToProject(project.id, tmpl.id, "", posX, posY);
       const updatedNodes = [...(project.nodes || []), newNode];
       const updatedProject = { ...project, nodes: updatedNodes };
@@ -159,11 +168,19 @@ export function App() {
       commitProjectUpdate(updatedProject, true);
       setSelectedNode(newNode);
     } catch (err) {
-      console.error("Failed to add node from template:", err);
+      console.error("[NETLAB-APP-DEBUG] Failed to add node from template:", err);
     }
   };
 
   const handleAddWire = async (srcNodeId, srcPortId, dstNodeId, dstPortId) => {
+    console.log("[NETLAB-APP-DEBUG] Requesting wire creation:", {
+      srcNodeId,
+      srcPortId,
+      dstNodeId,
+      dstPortId,
+      currentWires: project.wires,
+    });
+
     const isPortConnected = (nodeId, portId) => {
       return (project.wires || []).some(
         (w) =>
@@ -173,10 +190,12 @@ export function App() {
     };
 
     if (isPortConnected(srcNodeId, srcPortId)) {
+      console.warn("[NETLAB-APP-DEBUG] Rejected: Source port already connected.");
       alert(`Port ${srcPortId} on device ${srcNodeId} is already connected to a wire!`);
       return;
     }
     if (isPortConnected(dstNodeId, dstPortId)) {
+      console.warn("[NETLAB-APP-DEBUG] Rejected: Destination port already connected.");
       alert(`Port ${dstPortId} on device ${dstNodeId} is already connected to a wire!`);
       return;
     }
@@ -191,16 +210,19 @@ export function App() {
 
     const updatedWires = [...(project.wires || []), newWire];
     const updatedProject = { ...project, wires: updatedWires };
+    console.log("[NETLAB-APP-DEBUG] Wire created successfully:", newWire);
     commitProjectUpdate(updatedProject, true);
   };
 
   const handleDeleteWire = async (wireId) => {
+    console.log("[NETLAB-APP-DEBUG] Deleting wire:", wireId);
     const updatedWires = (project.wires || []).filter((w) => w.id !== wireId);
     const updatedProject = { ...project, wires: updatedWires };
     commitProjectUpdate(updatedProject, true);
   };
 
   const handleUpdateNode = async (updatedNode) => {
+    console.log("[NETLAB-APP-DEBUG] Updating node:", updatedNode);
     const updatedNodes = (project.nodes || []).map((n) =>
       n.id === updatedNode.id ? updatedNode : n,
     );
@@ -210,6 +232,7 @@ export function App() {
   };
 
   const handleDeleteNode = async (nodeId) => {
+    console.log("[NETLAB-APP-DEBUG] Deleting node:", nodeId);
     const updatedNodes = (project.nodes || []).filter((n) => n.id !== nodeId);
     const updatedWires = (project.wires || []).filter(
       (w) => w.srcNodeId !== nodeId && w.dstNodeId !== nodeId,
@@ -225,7 +248,10 @@ export function App() {
         projectName={project.name}
         isRunning={isRunning}
         activeTool={activeTool}
-        onSelectTool={(tool) => setActiveTool(tool)}
+        onSelectTool={(tool) => {
+          console.log("[NETLAB-APP-DEBUG] Tool selected:", tool);
+          setActiveTool(tool);
+        }}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={handleUndo}
