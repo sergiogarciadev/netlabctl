@@ -144,7 +144,7 @@ export function Canvas({
       opt.e.stopPropagation();
     });
 
-    // Mouse move handler (handles pan & 90-degree orthogonal wire rubberband & HUD)
+    // Mouse move handler (handles pan & parallel 90-degree orthogonal wire rubberband & HUD)
     canvas.on("mouse:move", (opt) => {
       const pointer = canvas.getScenePoint(opt.e);
       const evt = opt.e;
@@ -195,7 +195,8 @@ export function Canvas({
 
       if (wiringStateRef.current.active && wiringStateRef.current.tempLine) {
         const startPos = wiringStateRef.current.startPos;
-        const orthoPoints = calculateOrthogonalPoints(startPos, pointer);
+        const srcPortId = wiringStateRef.current.srcPortId;
+        const orthoPoints = calculateOrthogonalPoints(startPos, pointer, srcPortId, "");
         wiringStateRef.current.tempLine.set({ points: orthoPoints });
         canvas.requestRenderAll();
       }
@@ -256,7 +257,7 @@ export function Canvas({
           opt.e.stopPropagation();
 
           if (!wiringStateRef.current.active) {
-            const orthoPoints = calculateOrthogonalPoints(portAbsPos, pointer);
+            const orthoPoints = calculateOrthogonalPoints(portAbsPos, pointer, clickedPortId, "");
 
             wiringStateRef.current = {
               active: true,
@@ -447,20 +448,30 @@ export function Canvas({
   );
 }
 
-// Manhattan 90-degree orthogonal polyline point calculation algorithm
-function calculateOrthogonalPoints(p1, p2) {
+// Manhattan 90-degree orthogonal polyline point calculation with parallel channel offsets
+function calculateOrthogonalPoints(p1, p2, srcPortId = "", dstPortId = "") {
   const x1 = p1.x;
   const y1 = p1.y;
   const x2 = p2.x;
   const y2 = p2.y;
 
-  // Exit offset downwards from device port anchor
-  const exitOffsetY = 20;
+  // Extract port index numbers for deterministic parallel channel offsets
+  const parsePortNum = (idStr) => {
+    const num = Number.parseInt(String(idStr).replace(/\D/g, ""), 10);
+    return Number.isNaN(num) ? 1 : num;
+  };
+
+  const p1Num = parsePortNum(srcPortId);
+  const p2Num = parsePortNum(dstPortId);
+
+  // Parallel channel shift spacing (14px separation between parallel wire tracks)
+  const channelShift = (p1Num - 1) * 14 - 18 + (p2Num - 1) * 2;
+  const exitOffsetY = 20 + Math.abs(p1Num - 1) * 5;
 
   const exitY1 = y1 + exitOffsetY;
   const enterY2 = Math.abs(y2 - y1) > 40 ? y2 + (y2 < y1 ? exitOffsetY : -exitOffsetY) : y2;
 
-  const midY = (exitY1 + enterY2) / 2;
+  const midY = (exitY1 + enterY2) / 2 + channelShift;
 
   return [
     { x: x1, y: y1 },
@@ -510,7 +521,7 @@ function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire)
       const p2 = dstGroup.getPortAbsPosition(wire.dstPortId);
 
       if (p1 && p2) {
-        const orthoPoints = calculateOrthogonalPoints(p1, p2);
+        const orthoPoints = calculateOrthogonalPoints(p1, p2, wire.srcPortId, wire.dstPortId);
 
         const wirePolyline = new Polyline(orthoPoints, {
           stroke: wire.tzspTarget ? "#f59e0b" : "#10b981",
