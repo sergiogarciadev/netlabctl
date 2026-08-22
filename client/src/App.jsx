@@ -106,6 +106,8 @@ export function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleUndo, handleRedo]);
 
+  const [wireStats, setWireStats] = useState([]);
+
   useEffect(() => {
     fetchTemplates()
       .then((tmplList) => {
@@ -141,6 +143,10 @@ export function App() {
       if (msg.type === "project_state") {
         console.log("[NETLAB-APP-DEBUG] Received WS project_state:", msg.data);
         setProject(msg.data);
+      } else if (msg.type === "wire_stats") {
+        if (Array.isArray(msg.data?.stats)) {
+          setWireStats(msg.data.stats);
+        }
       }
     });
     ws.connect();
@@ -296,6 +302,7 @@ export function App() {
         <Canvas
           nodes={project.nodes || []}
           wires={project.wires || []}
+          wireStats={wireStats}
           templates={templates}
           activeTool={activeTool}
           onSelectNode={(node) => setSelectedNode(node)}

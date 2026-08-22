@@ -1,4 +1,12 @@
-import { Canvas as FabricCanvas, Group, loadSVGFromString, Polyline, Rect } from "fabric";
+import {
+  Circle,
+  Canvas as FabricCanvas,
+  Group,
+  loadSVGFromString,
+  Polyline,
+  Rect,
+  Shadow,
+} from "fabric";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchTemplateDrawing } from "../services/api";
@@ -9,6 +17,7 @@ const svgCache = new Map();
 export function Canvas({
   nodes,
   wires,
+  wireStats = [],
   templates,
   activeTool,
   onSelectNode,
@@ -33,10 +42,127 @@ export function Canvas({
   });
 
   const viewportTransformRef = useRef([1, 0, 0, 1, 0, 0]);
+  const wirePolylineMapRef = useRef(new Map());
 
   // Isolated local debug info state
   const [debugInfo, setDebugInfo] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(100);
+
+  // Packet Flow Animation Ticker based on Managed Network packet events
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || canvas.isDisposed || !wireStats || wireStats.length === 0) return;
+
+    wireStats.forEach((stat) => {
+      const wireInfo = wirePolylineMapRef.current.get(stat.wireId);
+      if (!wireInfo?.points || wireInfo.points.length < 2) return;
+
+      const points = wireInfo.points;
+      const wireStrokeWidth = 3; // Base wire stroke width
+
+      // Helper function to animate packet circle along points array
+      const triggerCircleAnimation = (count, isReverse) => {
+        if (count <= 0) return;
+
+        // Size formula: starts at double of wire size (2x), increases by 1x for each log10 step
+        const logFactor = Math.floor(Math.log10(Math.max(1, count)));
+        const sizeMultiplier = 2 + logFactor;
+        const radius = (sizeMultiplier * wireStrokeWidth) / 2;
+
+        const pathPoints = isReverse ? [...points].reverse() : points;
+        const startPt = pathPoints[0];
+
+        // Create glowing animated packet circle on Fabric.js canvas
+        const packetCircle = new Circle({
+          left: startPt.x,
+          top: startPt.y,
+          radius: radius,
+          fill: isReverse ? "#f43f5e" : "#38bdf8",
+          shadow: new Shadow({
+            color: isReverse ? "#f43f5e" : "#38bdf8",
+            blur: 8,
+          }),
+          originX: "center",
+          originY: "center",
+          selectable: false,
+          evented: false,
+          opacity: 1,
+        });
+
+        canvas.add(packetCircle);
+
+        // Precompute path segments and total distance
+        const segments = [];
+        let totalDistance = 0;
+        for (let i = 0; i < pathPoints.length - 1; i++) {
+          const pA = pathPoints[i];
+          const pB = pathPoints[i + 1];
+          const dx = pB.x - pA.x;
+          const dy = pB.y - pA.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          segments.push({ pA, pB, dx, dy, len });
+          totalDistance += len;
+        }
+
+        if (totalDistance === 0) {
+          canvas.remove(packetCircle);
+          return;
+        }
+
+        const duration = 500; // 500ms smooth animation speed across wire
+        const startTime = performance.now();
+
+        const step = (now) => {
+          if (canvas.isDisposed) return;
+          const elapsed = now - startTime;
+          const progress = Math.min(1, elapsed / duration);
+
+          const currentDist = progress * totalDistance;
+          let accumulated = 0;
+          let curX = startPt.x;
+          let curY = startPt.y;
+
+          for (const seg of segments) {
+            if (currentDist <= accumulated + seg.len) {
+              const segProgress = (currentDist - accumulated) / (seg.len || 1);
+              curX = seg.pA.x + segProgress * seg.dx;
+              curY = seg.pA.y + segProgress * seg.dy;
+              break;
+            }
+            accumulated += seg.len;
+          }
+
+          packetCircle.set({
+            left: curX,
+            top: curY,
+            opacity: progress > 0.8 ? (1 - progress) / 0.2 : 1,
+          });
+          canvas.requestRenderAll();
+
+          if (progress < 1) {
+            requestAnimationFrame(step);
+          } else {
+            canvas.remove(packetCircle);
+            canvas.requestRenderAll();
+          }
+        };
+
+        requestAnimationFrame(step);
+      };
+
+      // Trigger forward flow animation (Src -> Dst)
+      const fwdCount = stat.srcToDst100ms || (stat.count > 0 ? stat.count : 0);
+      if (fwdCount > 0) {
+        triggerCircleAnimation(fwdCount, false);
+      }
+
+      // Trigger reverse flow animation (Dst -> Src)
+      const revCount = stat.dstToSrc100ms || 0;
+      if (revCount > 0) {
+        triggerCircleAnimation(revCount, true);
+      }
+    });
+  }, [wireStats]);
 
   const cancelWiring = useCallback(() => {
     const canvas = fabricCanvasRef.current;
@@ -393,14 +519,21 @@ export function Canvas({
             node.x = nodeGroup.left;
             node.y = nodeGroup.top;
           }
-          updateWirePositions(canvas, nodes, wires, nodeGroupsMap, onDeleteWire);
+          updateWirePositions(
+            canvas,
+            nodes,
+            wires,
+            nodeGroupsMap,
+            onDeleteWire,
+            wirePolylineMapRef,
+          );
         });
 
         canvas.add(nodeGroup);
         nodeGroupsMap.set(node.id, nodeGroup);
       }
 
-      updateWirePositions(canvas, nodes, wires, nodeGroupsMap, onDeleteWire);
+      updateWirePositions(canvas, nodes, wires, nodeGroupsMap, onDeleteWire, wirePolylineMapRef);
       if (!isCancelled && !canvas.isDisposed) {
         canvas.requestRenderAll();
       }
@@ -717,8 +850,19 @@ function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 45) 
   return closest;
 }
 
-function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire) {
+function updateWirePositions(
+  canvas,
+  _nodes,
+  wires,
+  nodeGroupsMap,
+  onDeleteWire,
+  wirePolylineMapRef,
+) {
   if (!canvas || canvas.isDisposed) return;
+
+  if (wirePolylineMapRef?.current) {
+    wirePolylineMapRef.current.clear();
+  }
 
   const existingLines = canvas.getObjects().filter((obj) => obj.isWireLine);
   for (const lineObj of existingLines) {
@@ -759,6 +903,14 @@ function updateWirePositions(canvas, _nodes, wires, nodeGroupsMap, onDeleteWire)
         });
         wirePolyline.isWireLine = true;
         wirePolyline.wireData = wire;
+
+        if (wirePolylineMapRef?.current) {
+          wirePolylineMapRef.current.set(wire.id, {
+            wire,
+            points: orthoPoints,
+            polyline: wirePolyline,
+          });
+        }
 
         if (onDeleteWire) {
           wirePolyline.on("mousedblclick", () => {

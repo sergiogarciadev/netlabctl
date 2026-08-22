@@ -85,9 +85,11 @@ type NodeStatusChangePayload struct {
 
 // WireStatItem represents 100ms sliding window packet statistics for a single wire.
 type WireStatItem struct {
-	WireID string `json:"wireId"`
-	Count  int    `json:"count"`
-	Bytes  int64  `json:"bytes,omitempty"`
+	WireID        string `json:"wireId"`
+	Count         int    `json:"count"`
+	Bytes         int64  `json:"bytes,omitempty"`
+	SrcToDst100ms int64  `json:"srcToDst100ms,omitempty"`
+	DstToSrc100ms int64  `json:"dstToSrc100ms,omitempty"`
 }
 
 // WireStatsPayload sent every 100ms tick to clients with active traffic stats.

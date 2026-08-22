@@ -15,11 +15,13 @@ import (
 )
 
 type WireProxyStats struct {
-	WireID       string `json:"wireId"`
-	Packets100ms int64  `json:"packets100ms"`
-	TotalPackets int64  `json:"totalPackets"`
-	TotalBytes   int64  `json:"totalBytes"`
-	TZSPActive   bool   `json:"tzspActive"`
+	WireID        string `json:"wireId"`
+	Packets100ms  int64  `json:"packets100ms"`
+	TotalPackets  int64  `json:"totalPackets"`
+	TotalBytes    int64  `json:"totalBytes"`
+	SrcToDst100ms int64  `json:"srcToDst100ms"`
+	DstToSrc100ms int64  `json:"dstToSrc100ms"`
+	TZSPActive    bool   `json:"tzspActive"`
 }
 
 type ManagedPortSocket struct {
@@ -34,14 +36,20 @@ type ManagedPortSocket struct {
 }
 
 type WireBridge struct {
-	Wire         model.Wire
-	PortA        *ManagedPortSocket
-	PortB        *ManagedPortSocket
-	packetsCount int64
-	bytesCount   int64
-	last100msPkt int64
-	lastPktCount int64
-	stopChan     chan struct{}
+	Wire            model.Wire
+	PortA           *ManagedPortSocket
+	PortB           *ManagedPortSocket
+	packetsCount    int64
+	bytesCount      int64
+	countSrcToDst   int64
+	countDstToSrc   int64
+	last100msPkt    int64
+	lastPktCount    int64
+	lastSrcToDstPkt int64
+	lastDstToSrcPkt int64
+	last100msSrcDst int64
+	last100msDstSrc int64
+	stopChan        chan struct{}
 }
 
 type NetworkManager struct {
@@ -80,6 +88,22 @@ func (nm *NetworkManager) update100msStats() {
 		}
 		atomic.StoreInt64(&bridge.last100msPkt, diff)
 		bridge.lastPktCount = current
+
+		curSD := atomic.LoadInt64(&bridge.countSrcToDst)
+		diffSD := curSD - bridge.lastSrcToDstPkt
+		if diffSD < 0 {
+			diffSD = 0
+		}
+		atomic.StoreInt64(&bridge.last100msSrcDst, diffSD)
+		bridge.lastSrcToDstPkt = curSD
+
+		curDS := atomic.LoadInt64(&bridge.countDstToSrc)
+		diffDS := curDS - bridge.lastDstToSrcPkt
+		if diffDS < 0 {
+			diffDS = 0
+		}
+		atomic.StoreInt64(&bridge.last100msDstSrc, diffDS)
+		bridge.lastDstToSrcPkt = curDS
 	}
 }
 
@@ -217,22 +241,22 @@ func (b *WireBridge) bridgeForwarding(cA, cB net.Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Forward A -> B with QEMU stream framing (4-byte length + payload)
+	// Forward A -> B (Src -> Dst) with QEMU stream framing (4-byte length + payload)
 	go func() {
 		defer wg.Done()
-		b.forwardStream(cA, cB)
+		b.forwardStream(cA, cB, &b.countSrcToDst)
 	}()
 
-	// Forward B -> A with QEMU stream framing (4-byte length + payload)
+	// Forward B -> A (Dst -> Src) with QEMU stream framing (4-byte length + payload)
 	go func() {
 		defer wg.Done()
-		b.forwardStream(cB, cA)
+		b.forwardStream(cB, cA, &b.countDstToSrc)
 	}()
 
 	wg.Wait()
 }
 
-func (b *WireBridge) forwardStream(src, dst net.Conn) {
+func (b *WireBridge) forwardStream(src, dst net.Conn, dirCounter *int64) {
 	header := make([]byte, 4)
 	for {
 		_, err := io.ReadFull(src, header)
@@ -276,6 +300,9 @@ func (b *WireBridge) forwardStream(src, dst net.Conn) {
 
 		atomic.AddInt64(&b.bytesCount, int64(pktLen))
 		atomic.AddInt64(&b.packetsCount, 1)
+		if dirCounter != nil {
+			atomic.AddInt64(dirCounter, 1)
+		}
 
 		if b.Wire.TZSPTarget != "" {
 			b.sendTZSPFrame(payload)
@@ -348,11 +375,13 @@ func (nm *NetworkManager) GetStats() []WireProxyStats {
 	stats := make([]WireProxyStats, 0, len(nm.bridges))
 	for id, b := range nm.bridges {
 		stats = append(stats, WireProxyStats{
-			WireID:       id,
-			Packets100ms: atomic.LoadInt64(&b.last100msPkt),
-			TotalPackets: atomic.LoadInt64(&b.packetsCount),
-			TotalBytes:   atomic.LoadInt64(&b.bytesCount),
-			TZSPActive:   b.Wire.TZSPTarget != "",
+			WireID:        id,
+			Packets100ms:  atomic.LoadInt64(&b.last100msPkt),
+			TotalPackets:  atomic.LoadInt64(&b.packetsCount),
+			TotalBytes:    atomic.LoadInt64(&b.bytesCount),
+			SrcToDst100ms: atomic.LoadInt64(&b.last100msSrcDst),
+			DstToSrc100ms: atomic.LoadInt64(&b.last100msDstSrc),
+			TZSPActive:    b.Wire.TZSPTarget != "",
 		})
 	}
 	return stats
