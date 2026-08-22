@@ -89,6 +89,16 @@ export function Sidebar({
     };
   };
 
+  const handlePortDriverChange = (portId, newDriver) => {
+    const updatedPorts = (selectedNode.ports || []).map((p) =>
+      p.id === portId ? { ...p, netdevType: newDriver } : p,
+    );
+    onUpdateNode({
+      ...selectedNode,
+      ports: updatedPorts,
+    });
+  };
+
   const handleSaveTzspForPort = (portId, wire) => {
     const targetAddr = tzspInputMap[portId] || "127.0.0.1:37008";
     if (wire && onUpdateWire) {
@@ -515,6 +525,49 @@ export function Sidebar({
                   }}
                 >
                   MAC: {port.mac}
+                </div>
+
+                {/* Editable Ethernet Driver Model */}
+                <div
+                  style={{
+                    marginTop: "6px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <label
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--text-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      width: "100%",
+                    }}
+                  >
+                    Driver:
+                    <select
+                      value={port.netdevType || "virtio-net-pci"}
+                      onChange={(e) => handlePortDriverChange(port.id, e.target.value)}
+                      style={{
+                        background: "var(--bg-dark)",
+                        border: "1px solid var(--border-color)",
+                        color: "#38bdf8",
+                        fontWeight: 600,
+                        borderRadius: "4px",
+                        padding: "2px 6px",
+                        fontSize: "0.75rem",
+                        cursor: "pointer",
+                        width: "100%",
+                      }}
+                    >
+                      <option value="virtio-net-pci">virtio-net-pci (Default)</option>
+                      <option value="e1000">e1000</option>
+                      <option value="rtl8139">rtl8139</option>
+                      <option value="virtio-net-ccw">virtio-net-ccw</option>
+                    </select>
+                  </label>
                 </div>
 
                 {/* Connection Status */}

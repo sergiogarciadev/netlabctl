@@ -168,10 +168,15 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		netdevID := fmt.Sprintf("net%d", i)
 		devID := fmt.Sprintf("eth%d", i)
 
+		devDriver := port.NetdevType
+		if devDriver == "" || devDriver == "managed" {
+			devDriver = "virtio-net-pci"
+		}
+
 		if ok && targetAddr != "" {
 			args = append(args,
 				"-netdev", fmt.Sprintf("socket,id=%s,connect=%s", netdevID, targetAddr),
-				"-device", fmt.Sprintf("e1000,netdev=%s,mac=%s,id=%s", netdevID, port.MAC, devID),
+				"-device", fmt.Sprintf("%s,netdev=%s,mac=%s,id=%s", devDriver, netdevID, port.MAC, devID),
 			)
 		}
 	}
