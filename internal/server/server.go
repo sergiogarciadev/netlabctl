@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 
 	"netlabctl/internal/logger"
+	"netlabctl/internal/network"
+	"netlabctl/internal/qemu"
 	"netlabctl/internal/storage"
 )
 
@@ -12,16 +14,23 @@ import (
 type Server struct {
 	addr    string
 	storage *storage.Storage
+	qemuMgr *qemu.Manager
+	netMgr  *network.NetworkManager
 	hub     *WSHub
 	mux     *http.ServeMux
 }
 
 // NewServer initializes a new netlabctl HTTP and WS server instance.
 func NewServer(addr string, store *storage.Storage) *Server {
+	qemuMgr := qemu.NewManager(store.BaseDir())
+	netMgr := network.NewNetworkManager()
+
 	s := &Server{
 		addr:    addr,
 		storage: store,
-		hub:     NewWSHub(store),
+		qemuMgr: qemuMgr,
+		netMgr:  netMgr,
+		hub:     NewWSHub(store, qemuMgr, netMgr),
 		mux:     http.NewServeMux(),
 	}
 
@@ -39,8 +48,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/projects/{id}", s.handleUpdateProject)
 	s.mux.HandleFunc("POST /api/projects/{id}/nodes", s.handleAddNode)
 
-	// WebSocket Endpoint
+	// WebSocket Endpoints
 	s.mux.HandleFunc("/ws", s.handleWS)
+	s.mux.HandleFunc("/api/v1/projects/{id}/nodes/{nodeId}/terminal", s.handleNodeTerminal)
 
 	// Static client file server (if client dist directory exists)
 	clientDist := filepath.Join(s.storage.BaseDir(), "..", "client", "dist")

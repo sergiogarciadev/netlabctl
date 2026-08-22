@@ -4,9 +4,8 @@ import { X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 
-export function TerminalWindow({ node, onClose, wsClient }) {
+export function TerminalWindow({ node, onClose }) {
   const terminalRef = useRef(null);
-  const xtermInstance = useRef(null);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -28,24 +27,37 @@ export function TerminalWindow({ node, onClose, wsClient }) {
     term.open(terminalRef.current);
     fitAddon.fit();
 
-    term.writeln(`\x1b[1;34mConnected to serial console for ${node.name}...\x1b[0m\r\n`);
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/api/v1/projects/default/nodes/${node.id}/terminal`;
+    const socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+      term.writeln(`\x1b[1;32mConnected to serial console for ${node.name}...\x1b[0m\r\n`);
+    };
+
+    socket.onmessage = (event) => {
+      term.write(event.data);
+    };
+
+    socket.onerror = () => {
+      term.writeln("\r\n\x1b[1;31mTerminal connection error.\x1b[0m\r\n");
+    };
 
     term.onData((data) => {
-      if (wsClient) {
-        wsClient.sendTerminalInput("default", node.id, data);
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(data);
       }
     });
-
-    xtermInstance.current = term;
 
     const handleResize = () => fitAddon.fit();
     window.addEventListener("resize", handleResize);
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      socket.close();
       term.dispose();
     };
-  }, [node, wsClient]);
+  }, [node]);
 
   return (
     <div className="terminal-modal">

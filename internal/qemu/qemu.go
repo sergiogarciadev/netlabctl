@@ -1,0 +1,236 @@
+package qemu
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sync"
+
+	"netlabctl/internal/logger"
+	"netlabctl/internal/model"
+)
+
+type NodeInstance struct {
+	NodeID         string
+	ProjectID      string
+	Cmd            *exec.Cmd
+	Dir            string
+	SerialSockPath string
+	IsRunning      bool
+}
+
+type Manager struct {
+	baseDir   string
+	mu        sync.Mutex
+	instances map[string]*NodeInstance
+}
+
+func NewManager(baseDir string) *Manager {
+	return &Manager{
+		baseDir:   baseDir,
+		instances: make(map[string]*NodeInstance),
+	}
+}
+
+// NodeDir returns the working directory for a given project node.
+func (m *Manager) NodeDir(projectID, nodeID string) string {
+	return filepath.Join(m.baseDir, "projects", projectID, "nodes", nodeID)
+}
+
+// PrepareNodeDisk creates a differential .qcow2 overlay disk backed by the template's image file.
+func (m *Manager) PrepareNodeDisk(projectID string, node *model.Node, tmplDir string, tmpl *model.MachineTemplate) (string, error) {
+	nDir := m.NodeDir(projectID, node.ID)
+	if err := os.MkdirAll(nDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create node directory: %w", err)
+	}
+
+	diskPath := filepath.Join(nDir, "disk.qcow2")
+
+	// If disk already exists, reuse it
+	if _, err := os.Stat(diskPath); err == nil {
+		return diskPath, nil
+	}
+
+	backingFile := ""
+	if tmpl != nil && tmpl.Image != "" {
+		backingFile = filepath.Join(tmplDir, tmpl.Image)
+	}
+
+	qemuImg, err := exec.LookPath("qemu-img")
+	if err != nil {
+		logger.Log.Warn("qemu-img binary not found on system; creating empty placeholder disk file", "diskPath", diskPath)
+		if err := os.WriteFile(diskPath, []byte("QCOW2_PLACEHOLDER"), 0644); err != nil {
+			return "", err
+		}
+		return diskPath, nil
+	}
+
+	var args []string
+	if backingFile != "" {
+		if _, err := os.Stat(backingFile); err == nil {
+			args = []string{"create", "-f", "qcow2", "-b", backingFile, diskPath}
+		} else {
+			logger.Log.Warn("Template backing image file not found, creating 2G blank disk", "backingFile", backingFile)
+			args = []string{"create", "-f", "qcow2", diskPath, "2G"}
+		}
+	} else {
+		args = []string{"create", "-f", "qcow2", diskPath, "2G"}
+	}
+
+	cmd := exec.Command(qemuImg, args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		logger.Log.Error("Failed to create qcow2 disk", "output", string(out), "error", err)
+		return "", fmt.Errorf("qemu-img failed: %w", err)
+	}
+
+	logger.Log.Info("Created differential qcow2 disk for node", "nodeID", node.ID, "diskPath", diskPath)
+	return diskPath, nil
+}
+
+// StartNode launches a QEMU process for the specified node.
+func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, tmpl *model.MachineTemplate, portSockets map[string]int) (*NodeInstance, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if inst, exists := m.instances[node.ID]; exists && inst.IsRunning {
+		return inst, nil
+	}
+
+	diskPath, err := m.PrepareNodeDisk(projectID, node, tmplDir, tmpl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare node disk: %w", err)
+	}
+
+	nDir := m.NodeDir(projectID, node.ID)
+	serialSock := filepath.Join(nDir, "serial.sock")
+	_ = os.Remove(serialSock) // Remove stale socket
+
+	sysBinary := "qemu-system-x86_64"
+	if tmpl != nil && tmpl.System != "" {
+		sysBinary = tmpl.System
+	}
+
+	qemuPath, err := exec.LookPath(sysBinary)
+	if err != nil {
+		logger.Log.Warn("QEMU binary not found; simulating node startup", "binary", sysBinary, "nodeID", node.ID)
+		inst := &NodeInstance{
+			NodeID:         node.ID,
+			ProjectID:      projectID,
+			Dir:            nDir,
+			SerialSockPath: serialSock,
+			IsRunning:      true,
+		}
+		m.instances[node.ID] = inst
+		return inst, nil
+	}
+
+	mem := node.Memory
+	if mem <= 0 && tmpl != nil {
+		mem = tmpl.Memory
+	}
+	if mem <= 0 {
+		mem = 256
+	}
+
+	smp := node.SMP
+	if smp <= 0 && tmpl != nil {
+		smp = tmpl.GetSMP()
+	}
+	if smp <= 0 {
+		smp = 1
+	}
+
+	args := []string{
+		"-name", node.ID,
+		"-m", fmt.Sprintf("%dM", mem),
+		"-smp", fmt.Sprintf("%d", smp),
+		"-hda", diskPath,
+		"-nographic",
+		"-serial", fmt.Sprintf("unix:%s,server,nowait", serialSock),
+	}
+
+	// Add port netdevs
+	for i, port := range node.Ports {
+		listenPort, hasListen := portSockets[port.ID]
+		netdevID := fmt.Sprintf("net%d", i)
+		devID := fmt.Sprintf("eth%d", i)
+
+		if hasListen {
+			args = append(args,
+				"-netdev", fmt.Sprintf("socket,id=%s,listen=127.0.0.1:%d", netdevID, listenPort),
+				"-device", fmt.Sprintf("e1000,netdev=%s,mac=%s,id=%s", netdevID, port.MAC, devID),
+			)
+		} else {
+			args = append(args,
+				"-netdev", fmt.Sprintf("user,id=%s", netdevID),
+				"-device", fmt.Sprintf("e1000,netdev=%s,mac=%s,id=%s", netdevID, port.MAC, devID),
+			)
+		}
+	}
+
+	if tmpl != nil && len(tmpl.Qemu) > 0 {
+		args = append(args, tmpl.Qemu...)
+	}
+
+	cmd := exec.Command(qemuPath, args...)
+	cmd.Dir = nDir
+
+	if err := cmd.Start(); err != nil {
+		logger.Log.Error("Failed to start QEMU instance", "nodeID", node.ID, "error", err)
+		return nil, fmt.Errorf("failed to start QEMU: %w", err)
+	}
+
+	inst := &NodeInstance{
+		NodeID:         node.ID,
+		ProjectID:      projectID,
+		Cmd:            cmd,
+		Dir:            nDir,
+		SerialSockPath: serialSock,
+		IsRunning:      true,
+	}
+
+	m.instances[node.ID] = inst
+	logger.Log.Info("Started QEMU instance for node", "nodeID", node.ID, "pid", cmd.Process.Pid)
+	return inst, nil
+}
+
+// StopNode stops the QEMU process for a given node.
+func (m *Manager) StopNode(nodeID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	inst, exists := m.instances[nodeID]
+	if !exists || !inst.IsRunning {
+		return nil
+	}
+
+	if inst.Cmd != nil && inst.Cmd.Process != nil {
+		_ = inst.Cmd.Process.Kill()
+		_ = inst.Cmd.Wait()
+	}
+
+	inst.IsRunning = false
+	delete(m.instances, nodeID)
+	logger.Log.Info("Stopped QEMU instance for node", "nodeID", nodeID)
+	return nil
+}
+
+// StopAllNodes stops all running QEMU instances.
+func (m *Manager) StopAllNodes() {
+	m.mu.Lock()
+	nodes := make([]string, 0, len(m.instances))
+	for id := range m.instances {
+		nodes = append(nodes, id)
+	}
+	m.mu.Unlock()
+
+	for _, id := range nodes {
+		_ = m.StopNode(id)
+	}
+}
+
+// GetSerialSocketPath returns the path to a node's serial console UNIX domain socket.
+func (m *Manager) GetSerialSocketPath(projectID, nodeID string) string {
+	return filepath.Join(m.NodeDir(projectID, nodeID), "serial.sock")
+}

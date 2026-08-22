@@ -2,13 +2,19 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 
 	"netlabctl/internal/logger"
 	"netlabctl/internal/model"
+	"netlabctl/internal/network"
+	"netlabctl/internal/qemu"
 	"netlabctl/internal/storage"
 )
 
@@ -30,6 +36,8 @@ type Client struct {
 // WSHub maintains active clients and routes WebSocket events.
 type WSHub struct {
 	storage    *storage.Storage
+	qemuMgr    *qemu.Manager
+	netMgr     *network.NetworkManager
 	clients    map[*Client]bool
 	register   chan *Client
 	unregister chan *Client
@@ -38,9 +46,11 @@ type WSHub struct {
 }
 
 // NewWSHub initializes the WebSocket hub.
-func NewWSHub(store *storage.Storage) *WSHub {
+func NewWSHub(store *storage.Storage, qemuMgr *qemu.Manager, netMgr *network.NetworkManager) *WSHub {
 	return &WSHub{
 		storage:    store,
+		qemuMgr:    qemuMgr,
+		netMgr:     netMgr,
 		clients:    make(map[*Client]bool),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
@@ -48,8 +58,11 @@ func NewWSHub(store *storage.Storage) *WSHub {
 	}
 }
 
-// Run executes the hub event loop.
+// Run executes the hub event loop and 100ms packet stats ticker.
 func (h *WSHub) Run() {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case client := <-h.register:
@@ -78,6 +91,30 @@ func (h *WSHub) Run() {
 				}
 			}
 			h.mu.RUnlock()
+
+		case <-ticker.C:
+			// Broadcast 100ms packet stats to subscribed clients
+			if h.netMgr != nil {
+				stats := h.netMgr.GetStats()
+				if len(stats) > 0 {
+					h.broadcastStats(stats)
+				}
+			}
+		}
+	}
+}
+
+func (h *WSHub) broadcastStats(stats []network.WireProxyStats) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	for client := range h.clients {
+		client.mu.Lock()
+		projID := client.projectID
+		client.mu.Unlock()
+
+		if projID != "" {
+			client.sendJSON("packet_stats", stats)
 		}
 	}
 }
@@ -173,9 +210,15 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 
 	case model.MsgTypeStartSimulation:
 		logger.Log.Info("WS Command: Start simulation", "project", c.projectID)
+		if c.projectID != "" {
+			c.hub.startProjectSimulation(c.projectID)
+		}
 
 	case model.MsgTypeStopSimulation:
 		logger.Log.Info("WS Command: Stop simulation", "project", c.projectID)
+		if c.projectID != "" {
+			c.hub.stopProjectSimulation(c.projectID)
+		}
 
 	case model.MsgTypeStartNode:
 		var payload model.NodeActionPayload
@@ -187,26 +230,68 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 		var payload model.NodeActionPayload
 		if err := json.Unmarshal(msg.Data, &payload); err == nil {
 			logger.Log.Info("WS Command: Stop node", "node", payload.NodeID)
-		}
-
-	case model.MsgTypeTerminalInput:
-		var payload model.TerminalInputPayload
-		if err := json.Unmarshal(msg.Data, &payload); err == nil {
-			logger.Log.Debug("WS Command: Terminal input", "node", payload.NodeID)
-		}
-
-	case model.MsgTypeSetWireCondition:
-		var payload model.SetWireConditionPayload
-		if err := json.Unmarshal(msg.Data, &payload); err == nil {
-			logger.Log.Info("WS Command: Set wire condition", "wire", payload.WireID)
+			_ = c.hub.qemuMgr.StopNode(payload.NodeID)
 		}
 
 	case model.MsgTypeEnableTZSP:
 		var payload model.EnableTZSPPayload
 		if err := json.Unmarshal(msg.Data, &payload); err == nil {
 			logger.Log.Info("WS Command: Enable TZSP", "wire", payload.WireID, "target", payload.TargetUDP)
+			top, err := c.hub.storage.GetProject(c.projectID)
+			if err == nil {
+				for i := range top.Wires {
+					if top.Wires[i].ID == payload.WireID {
+						top.Wires[i].TZSPTarget = payload.TargetUDP
+						_ = c.hub.storage.SaveProject(top)
+						c.hub.BroadcastToProject(c.projectID, model.MsgTypeProjectState, top)
+						break
+					}
+				}
+			}
 		}
 	}
+}
+
+func (h *WSHub) startProjectSimulation(projectID string) {
+	top, err := h.storage.GetProject(projectID)
+	if err != nil {
+		logger.Log.Error("Failed to get project for simulation start", "error", err)
+		return
+	}
+
+	basePort := 10000
+	portMap := make(map[string]int)
+
+	// 1. Setup Network Wire Proxies
+	for i, wire := range top.Wires {
+		listenPort := basePort + i*2
+		connectPort := basePort + i*2 + 1
+
+		portMap[wire.SrcPortID] = listenPort
+		portMap[wire.DstPortID] = connectPort
+
+		_, err := h.netMgr.StartWireProxy(wire, listenPort, connectPort)
+		if err != nil {
+			logger.Log.Error("Failed to start wire proxy", "wireID", wire.ID, "error", err)
+		}
+	}
+
+	// 2. Launch QEMU Node Instances
+	for _, node := range top.Nodes {
+		tmpl, tmplDir, _ := h.storage.GetTemplate(node.TemplateID)
+		_, err := h.qemuMgr.StartNode(projectID, &node, tmplDir, tmpl, portMap)
+		if err != nil {
+			logger.Log.Error("Failed to start node instance", "nodeID", node.ID, "error", err)
+		}
+	}
+
+	h.BroadcastToProject(projectID, "simulation_started", map[string]string{"status": "running"})
+}
+
+func (h *WSHub) stopProjectSimulation(projectID string) {
+	h.qemuMgr.StopAllNodes()
+	h.netMgr.StopAllProxies()
+	h.BroadcastToProject(projectID, "simulation_stopped", map[string]string{"status": "stopped"})
 }
 
 func (c *Client) sendJSON(msgType string, data interface{}) {
@@ -238,3 +323,76 @@ func (c *Client) writePump() {
 		}
 	}
 }
+
+// handleNodeTerminal streams serial console I/O between xterm.js and the node's QEMU serial socket.
+func (s *Server) handleNodeTerminal(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	nodeID := r.PathValue("nodeId")
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		logger.Log.Error("Terminal WebSocket upgrade failed", "error", err)
+		return
+	}
+	defer conn.Close()
+
+	serialSock := s.qemuMgr.GetSerialSocketPath(projectID, nodeID)
+	unixConn, err := net.Dial("unix", serialSock)
+
+	if err != nil {
+		// Mock interactive shell if QEMU binary is not running on host
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n--- Connected to %s Serial Console (Simulated Mode) ---\r\n\r\nRouterOS 7.12 (c) 1999-2026 MikroTik\r\n%s login: ", nodeID, nodeID)))
+
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				break
+			}
+
+			// Echo typed character back to xterm.js
+			if string(msg) == "\r" || string(msg) == "\n" {
+				conn.WriteMessage(websocket.TextMessage, []byte("\r\n" + nodeID + "> "))
+			} else {
+				conn.WriteMessage(websocket.TextMessage, msg)
+			}
+		}
+		return;
+	}
+
+	defer unixConn.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Stream UNIX serial socket -> WebSocket (to xterm.js)
+	go func() {
+		defer wg.Done()
+		buf := make([]byte, 1024)
+		for {
+			n, err := unixConn.Read(buf)
+			if n > 0 {
+				_ = conn.WriteMessage(websocket.TextMessage, buf[:n])
+			}
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	// Stream WebSocket (from xterm.js keystrokes) -> UNIX serial socket
+	go func() {
+		defer wg.Done()
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				break
+			}
+			_, _ = unixConn.Write(msg)
+		}
+	}()
+
+	wg.Wait()
+}
+
+// Suppress unused imports check
+var _ = os.Stat
