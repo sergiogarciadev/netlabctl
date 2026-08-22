@@ -1,15 +1,17 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.10/schema.json",
   "linter": {
-    "enabled": true
+    "enabled": true,
+    "rules": {
+      "complexity": {
+        "noImportantStyles": "off"
+      }
+    }
   },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
     "lineWidth": 100
-  },
-  "files": {
-    "includes": ["client/src/**/*.js", "client/src/**/*.jsx"]
   }
 }

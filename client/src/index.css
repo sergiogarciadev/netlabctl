@@ -10,8 +10,8 @@
   --accent-danger: #ef4444;
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
 }
 
 * {
@@ -20,7 +20,9 @@
   padding: 0;
 }
 
-body, html, #root {
+body,
+html,
+#root {
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -131,8 +133,11 @@ body, html, #root {
 .canvas-wrapper {
   width: 100%;
   height: 100%;
-  background-image: 
-    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.05) 1px,
+    transparent 0
+  );
   background-size: 24px 24px;
 }
 

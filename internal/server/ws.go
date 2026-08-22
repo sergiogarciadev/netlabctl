@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -209,16 +210,34 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 		}
 
 	case model.MsgTypeStartSimulation:
-		logger.Log.Info("WS Command: Start simulation", "project", c.projectID)
-		if c.projectID != "" {
-			c.hub.startProjectSimulation(c.projectID)
+		var payload struct {
+			ProjectID string `json:"projectId"`
 		}
+		_ = json.Unmarshal(msg.Data, &payload)
+		projectID := payload.ProjectID
+		if projectID == "" {
+			projectID = c.projectID
+		}
+		if projectID == "" {
+			projectID = "default"
+		}
+		logger.Log.Info("WS Command: Start simulation", "project", projectID)
+		c.hub.startProjectSimulation(projectID)
 
 	case model.MsgTypeStopSimulation:
-		logger.Log.Info("WS Command: Stop simulation", "project", c.projectID)
-		if c.projectID != "" {
-			c.hub.stopProjectSimulation(c.projectID)
+		var payload struct {
+			ProjectID string `json:"projectId"`
 		}
+		_ = json.Unmarshal(msg.Data, &payload)
+		projectID := payload.ProjectID
+		if projectID == "" {
+			projectID = c.projectID
+		}
+		if projectID == "" {
+			projectID = "default"
+		}
+		logger.Log.Info("WS Command: Stop simulation", "project", projectID)
+		c.hub.stopProjectSimulation(projectID)
 
 	case model.MsgTypeStartNode:
 		var payload model.NodeActionPayload
@@ -329,6 +348,10 @@ func (s *Server) handleNodeTerminal(w http.ResponseWriter, r *http.Request) {
 	projectID := r.PathValue("id")
 	nodeID := r.PathValue("nodeId")
 
+	if projectID == "" {
+		projectID = "default"
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		logger.Log.Error("Terminal WebSocket upgrade failed", "error", err)
@@ -337,29 +360,61 @@ func (s *Server) handleNodeTerminal(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	serialSock := s.qemuMgr.GetSerialSocketPath(projectID, nodeID)
-	unixConn, err := net.Dial("unix", serialSock)
+	unixConn, dialErr := net.Dial("unix", serialSock)
 
-	if err != nil {
-		// Mock interactive shell if QEMU binary is not running on host
-		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n--- Connected to %s Serial Console (Simulated Mode) ---\r\n\r\nRouterOS 7.12 (c) 1999-2026 MikroTik\r\n%s login: ", nodeID, nodeID)))
+	if dialErr != nil {
+		welcomeMsg := fmt.Sprintf("\r\n\x1b[1;36m=== netlabctl Serial Console — %s ===\x1b[0m\r\n"+
+			"\x1b[33mStatus: Standby (Click 'Start Lab' to boot QEMU instance)\x1b[0m\r\n"+
+			"\x1b[90mVirtual CLI active. Type 'help' or commands below.\x1b[0m\r\n\r\n%s> ", nodeID, nodeID)
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(welcomeMsg))
 
+		var inputBuf string
 		for {
 			_, msg, err := conn.ReadMessage()
 			if err != nil {
 				break
 			}
 
-			// Echo typed character back to xterm.js
-			if string(msg) == "\r" || string(msg) == "\n" {
-				conn.WriteMessage(websocket.TextMessage, []byte("\r\n" + nodeID + "> "))
+			str := string(msg)
+			if str == "\r" || str == "\n" {
+				cmd := strings.TrimSpace(inputBuf)
+				inputBuf = ""
+				response := "\r\n"
+
+				switch cmd {
+				case "help":
+					response += "Available commands: help, status, info, ports, clear\r\n"
+				case "status":
+					response += fmt.Sprintf("Node %s is in Standby mode.\r\n", nodeID)
+				case "info":
+					response += fmt.Sprintf("Node ID: %s | Project: %s\r\n", nodeID, projectID)
+				case "clear":
+					_ = conn.WriteMessage(websocket.TextMessage, []byte("\x1bc"))
+					response = ""
+				default:
+					if cmd != "" {
+						response += fmt.Sprintf("Unknown command: %s\r\n", cmd)
+					}
+				}
+
+				response += fmt.Sprintf("%s> ", nodeID)
+				_ = conn.WriteMessage(websocket.TextMessage, []byte(response))
+			} else if str == "\x7f" || str == "\b" { // Backspace
+				if len(inputBuf) > 0 {
+					inputBuf = inputBuf[:len(inputBuf)-1]
+					_ = conn.WriteMessage(websocket.TextMessage, []byte("\b \b"))
+				}
 			} else {
-				conn.WriteMessage(websocket.TextMessage, msg)
+				inputBuf += str
+				_ = conn.WriteMessage(websocket.TextMessage, []byte(str))
 			}
 		}
-		return;
+		return
 	}
 
 	defer unixConn.Close()
+
+	_ = conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n\x1b[1;32mConnected to %s QEMU Serial Console...\x1b[0m\r\n\r\n", nodeID)))
 
 	var wg sync.WaitGroup
 	wg.Add(2)
