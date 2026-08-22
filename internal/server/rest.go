@@ -171,15 +171,20 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 
 	var ports []model.NodePort
 	for i, pt := range tmpl.Ports {
-		devType := pt.Type
-		if devType == "" || devType == "managed" || devType == "e1000" {
-			devType = "virtio-net-pci"
+		portType := pt.Type
+		if portType == "" {
+			portType = "managed"
+		}
+		driver := pt.Device
+		if driver == "" {
+			driver = "virtio-net-pci"
 		}
 		ports = append(ports, model.NodePort{
-			ID:         pt.ID,
-			Name:       pt.Name,
-			MAC:        macs[i],
-			NetdevType: devType,
+			ID:           pt.ID,
+			Name:         pt.Name,
+			MAC:          macs[i],
+			Type:         portType,
+			NetdevDriver: driver,
 		})
 	}
 

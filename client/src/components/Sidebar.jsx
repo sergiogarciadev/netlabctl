@@ -91,7 +91,7 @@ export function Sidebar({
 
   const handlePortDriverChange = (portId, newDriver) => {
     const updatedPorts = (selectedNode.ports || []).map((p) =>
-      p.id === portId ? { ...p, netdevType: newDriver } : p,
+      p.id === portId ? { ...p, netdevDriver: newDriver } : p,
     );
     onUpdateNode({
       ...selectedNode,
@@ -509,10 +509,10 @@ export function Sidebar({
                 >
                   <span>{port.name}</span>
                   <span
-                    className={`port ${port.netdevType || "managed"}`}
+                    className={`port ${port.type || "managed"}`}
                     style={{ fontSize: "0.75rem" }}
                   >
-                    {port.netdevType || "managed"}
+                    {port.type || "managed"}
                   </span>
                 </div>
 
@@ -548,13 +548,7 @@ export function Sidebar({
                   >
                     Driver:
                     <select
-                      value={
-                        port.netdevType === "ethernet" ||
-                        port.netdevType === "managed" ||
-                        !port.netdevType
-                          ? "virtio-net-pci"
-                          : port.netdevType
-                      }
+                      value={port.netdevDriver || "virtio-net-pci"}
                       onChange={(e) => handlePortDriverChange(port.id, e.target.value)}
                       style={{
                         background: "var(--bg-dark)",

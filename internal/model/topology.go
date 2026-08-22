@@ -2,10 +2,11 @@ package model
 
 // NodePort represents an assigned port on an instantiated node in a topology.
 type NodePort struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	MAC        string `json:"mac"`
-	NetdevType string `json:"netdevType"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	MAC          string `json:"mac"`
+	Type         string `json:"type,omitempty"`         // e.g. "managed"
+	NetdevDriver string `json:"netdevDriver,omitempty"` // QEMU device model e.g. "virtio-net-pci", "e1000"
 }
 
 // Node represents an instantiated machine in the simulation canvas.
