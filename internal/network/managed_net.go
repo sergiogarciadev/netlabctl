@@ -1,7 +1,9 @@
 package network
 
 import (
+	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -20,6 +22,7 @@ type WireProxyStats struct {
 }
 
 type ManagedPortSocket struct {
+	Key      string // "nodeID:portID"
 	NodeID   string
 	PortID   string
 	IP       string
@@ -42,7 +45,7 @@ type WireBridge struct {
 
 type NetworkManager struct {
 	mu          sync.Mutex
-	portSockets map[string]*ManagedPortSocket // portID -> socket
+	portSockets map[string]*ManagedPortSocket // "nodeID:portID" -> socket
 	bridges     map[string]*WireBridge        // wireID -> bridge
 }
 
@@ -84,7 +87,8 @@ func (nm *NetworkManager) RegisterPortListener(nodeID, portID, ip string, port i
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
 
-	if ps, exists := nm.portSockets[portID]; exists {
+	key := fmt.Sprintf("%s:%s", nodeID, portID)
+	if ps, exists := nm.portSockets[key]; exists {
 		return ps, nil
 	}
 
@@ -95,6 +99,7 @@ func (nm *NetworkManager) RegisterPortListener(nodeID, portID, ip string, port i
 	}
 
 	ps := &ManagedPortSocket{
+		Key:      key,
 		NodeID:   nodeID,
 		PortID:   portID,
 		IP:       ip,
@@ -102,7 +107,7 @@ func (nm *NetworkManager) RegisterPortListener(nodeID, portID, ip string, port i
 		listener: listener,
 	}
 
-	nm.portSockets[portID] = ps
+	nm.portSockets[key] = ps
 
 	// Accept QEMU connection for this managed port
 	go func() {
@@ -117,7 +122,7 @@ func (nm *NetworkManager) RegisterPortListener(nodeID, portID, ip string, port i
 			}
 			ps.conn = conn
 			ps.mu.Unlock()
-			logger.Log.Info("QEMU connected to managed port socket", "nodeID", nodeID, "portID", portID, "addr", addrStr)
+			logger.Log.Info("QEMU connected to managed port socket", "key", key, "addr", addrStr)
 		}
 	}()
 
@@ -133,11 +138,14 @@ func (nm *NetworkManager) AddWireBridge(wire model.Wire) error {
 		return nil
 	}
 
-	psA, okA := nm.portSockets[wire.SrcPortID]
-	psB, okB := nm.portSockets[wire.DstPortID]
+	srcKey := fmt.Sprintf("%s:%s", wire.SrcNodeID, wire.SrcPortID)
+	dstKey := fmt.Sprintf("%s:%s", wire.DstNodeID, wire.DstPortID)
+
+	psA, okA := nm.portSockets[srcKey]
+	psB, okB := nm.portSockets[dstKey]
 
 	if !okA || !okB {
-		return fmt.Errorf("port sockets not registered for wire %s (src: %s, dst: %s)", wire.ID, wire.SrcPortID, wire.DstPortID)
+		return fmt.Errorf("port sockets not registered for wire %s (srcKey: %s, dstKey: %s)", wire.ID, srcKey, dstKey)
 	}
 
 	bridge := &WireBridge{
@@ -150,7 +158,7 @@ func (nm *NetworkManager) AddWireBridge(wire model.Wire) error {
 	nm.bridges[wire.ID] = bridge
 
 	go bridge.runBridge()
-	logger.Log.Info("Established managed network wire bridge", "wireID", wire.ID, "srcPort", wire.SrcPortID, "dstPort", wire.DstPortID)
+	logger.Log.Info("Established managed network wire bridge", "wireID", wire.ID, "srcKey", srcKey, "dstKey", dstKey)
 	return nil
 }
 
@@ -186,51 +194,57 @@ func (b *WireBridge) bridgeForwarding(cA, cB net.Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Forward A -> B
+	// Forward A -> B with QEMU stream framing (4-byte length + payload)
 	go func() {
 		defer wg.Done()
-		buf := make([]byte, 4096)
-		for {
-			n, err := cA.Read(buf)
-			if n > 0 {
-				atomic.AddInt64(&b.bytesCount, int64(n))
-				atomic.AddInt64(&b.packetsCount, 1)
-
-				if b.Wire.TZSPTarget != "" {
-					b.sendTZSPFrame(buf[:n])
-				}
-
-				_, _ = cB.Write(buf[:n])
-			}
-			if err != nil {
-				return
-			}
-		}
+		b.forwardStream(cA, cB)
 	}()
 
-	// Forward B -> A
+	// Forward B -> A with QEMU stream framing (4-byte length + payload)
 	go func() {
 		defer wg.Done()
-		buf := make([]byte, 4096)
-		for {
-			n, err := cB.Read(buf)
-			if n > 0 {
-				atomic.AddInt64(&b.bytesCount, int64(n))
-				atomic.AddInt64(&b.packetsCount, 1)
-
-				if b.Wire.TZSPTarget != "" {
-					b.sendTZSPFrame(buf[:n])
-				}
-
-				_, _ = cA.Write(buf[:n])
-			}
-			if err != nil {
-				return
-			}
-		}
+		b.forwardStream(cB, cA)
 	}()
 
 	wg.Wait()
+}
+
+func (b *WireBridge) forwardStream(src, dst net.Conn) {
+	header := make([]byte, 4)
+	for {
+		_, err := io.ReadFull(src, header)
+		if err != nil {
+			return
+		}
+
+		pktLen := binary.BigEndian.Uint32(header)
+		if pktLen == 0 || pktLen > 65536 {
+			return
+		}
+
+		payload := make([]byte, pktLen)
+		_, err = io.ReadFull(src, payload)
+		if err != nil {
+			return
+		}
+
+		atomic.AddInt64(&b.bytesCount, int64(pktLen))
+		atomic.AddInt64(&b.packetsCount, 1)
+
+		if b.Wire.TZSPTarget != "" {
+			b.sendTZSPFrame(payload)
+		}
+
+		// Write 4-byte header + payload to destination QEMU socket
+		_, err = dst.Write(header)
+		if err != nil {
+			return
+		}
+		_, err = dst.Write(payload)
+		if err != nil {
+			return
+		}
+	}
 }
 
 func (b *WireBridge) sendTZSPFrame(payload []byte) {

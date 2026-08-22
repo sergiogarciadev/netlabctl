@@ -163,7 +163,8 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 
 	// Add managed port netdev sockets for ALL node ports
 	for i, port := range node.Ports {
-		targetAddr, ok := portAddrs[port.ID]
+		portKey := fmt.Sprintf("%s:%s", node.ID, port.ID)
+		targetAddr, ok := portAddrs[portKey]
 		netdevID := fmt.Sprintf("net%d", i)
 		devID := fmt.Sprintf("eth%d", i)
 

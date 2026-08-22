@@ -295,7 +295,8 @@ func (h *WSHub) startProjectSimulation(projectID string) {
 			tcpPort := 10000 + nodeNum*20 + portNum
 
 			addrStr := fmt.Sprintf("%s:%d", ip, tcpPort)
-			portAddrs[port.ID] = addrStr
+			portKey := fmt.Sprintf("%s:%s", node.ID, port.ID)
+			portAddrs[portKey] = addrStr
 
 			_, err := h.netMgr.RegisterPortListener(node.ID, port.ID, ip, tcpPort)
 			if err != nil {
