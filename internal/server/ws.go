@@ -122,13 +122,7 @@ func (h *WSHub) broadcastStats(stats []network.WireProxyStats) {
 	payload := model.WireStatsPayload{Stats: statItems}
 
 	for client := range h.clients {
-		client.mu.Lock()
-		projID := client.projectID
-		client.mu.Unlock()
-
-		if projID != "" {
-			client.sendJSON(model.MsgTypeWireStats, payload)
-		}
+		client.sendJSON(model.MsgTypeWireStats, payload)
 	}
 }
 

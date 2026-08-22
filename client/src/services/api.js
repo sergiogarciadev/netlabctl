@@ -71,6 +71,7 @@ export class WSClient {
     this.onMessage = onMessage;
     this.ws = null;
     this.connected = false;
+    this.currentProjectId = "default";
   }
 
   connect() {
@@ -81,6 +82,9 @@ export class WSClient {
     this.ws.onopen = () => {
       this.connected = true;
       console.log("[WS] Connected to netlabctl server");
+      if (this.currentProjectId) {
+        this.send("subscribe_project", { projectId: this.currentProjectId });
+      }
     };
 
     this.ws.onmessage = (event) => {
@@ -106,6 +110,7 @@ export class WSClient {
   }
 
   subscribeProject(projectId) {
+    this.currentProjectId = projectId;
     this.send("subscribe_project", { projectId });
   }
 
