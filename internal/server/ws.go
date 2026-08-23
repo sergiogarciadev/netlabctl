@@ -81,16 +81,28 @@ func (h *WSHub) Run() {
 			logger.Log.Debug("WebSocket client disconnected")
 
 		case message := <-h.broadcast:
+			var slowClients []*Client
+
 			h.mu.RLock()
 			for client := range h.clients {
 				select {
 				case client.send <- message:
 				default:
-					close(client.send)
-					delete(h.clients, client)
+					slowClients = append(slowClients, client)
 				}
 			}
 			h.mu.RUnlock()
+
+			if len(slowClients) > 0 {
+				h.mu.Lock()
+				for _, client := range slowClients {
+					if _, ok := h.clients[client]; ok {
+						delete(h.clients, client)
+						close(client.send)
+					}
+				}
+				h.mu.Unlock()
+			}
 
 		case <-ticker.C:
 			// Broadcast 100ms packet stats to subscribed clients
