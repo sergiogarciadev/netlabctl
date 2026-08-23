@@ -280,7 +280,6 @@ func (m *Manager) StopNode(nodeID string) error {
 
 	if inst.Cmd != nil && inst.Cmd.Process != nil {
 		_ = inst.Cmd.Process.Kill()
-		_ = inst.Cmd.Wait()
 	}
 
 	inst.IsRunning = false
