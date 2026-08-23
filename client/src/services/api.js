@@ -71,6 +71,7 @@ export class WSClient {
     this.onMessage = onMessage;
     this.ws = null;
     this.connected = false;
+    this.intentionalClose = false;
     this.currentProjectId = "default";
   }
 
@@ -98,9 +99,15 @@ export class WSClient {
 
     this.ws.onclose = () => {
       this.connected = false;
+      if (this.intentionalClose) return;
       console.log("[WS] Disconnected, reconnecting in 2s...");
       setTimeout(() => this.connect(), 2000);
     };
+  }
+
+  disconnect() {
+    this.intentionalClose = true;
+    if (this.ws) this.ws.close();
   }
 
   send(type, data) {

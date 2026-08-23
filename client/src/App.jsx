@@ -164,6 +164,8 @@ export function App() {
     ws.connect();
     ws.subscribeProject("default");
     wsClientRef.current = ws;
+
+    return () => ws.disconnect();
   }, [updateHistoryButtons]);
 
   const handleStartLab = async () => {
