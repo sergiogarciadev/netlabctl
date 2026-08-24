@@ -46,6 +46,20 @@ export function Canvas({
   const wirePointsCacheRef = useRef(new Map());
   const wireStatsRef = useRef([]);
 
+  // Stable refs for callback props and activeTool — allows the one-time canvas
+  // initialization useEffect to always read the latest values without re-running.
+  const activeToolRef = useRef(activeTool);
+  const onSelectNodeRef = useRef(onSelectNode);
+  const onAddWireRef = useRef(onAddWire);
+  const onDeleteWireRef = useRef(onDeleteWire);
+  const onDeleteNodeRef = useRef(onDeleteNode);
+
+  useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
+  useEffect(() => { onSelectNodeRef.current = onSelectNode; }, [onSelectNode]);
+  useEffect(() => { onAddWireRef.current = onAddWire; }, [onAddWire]);
+  useEffect(() => { onDeleteWireRef.current = onDeleteWire; }, [onDeleteWire]);
+  useEffect(() => { onDeleteNodeRef.current = onDeleteNode; }, [onDeleteNode]);
+
   // Isolated local debug info state
   const [debugInfo, setDebugInfo] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -266,14 +280,15 @@ export function Canvas({
     setZoomLevel(100);
   };
 
-  // Initialize Fabric Canvas
+  // Initialize Fabric Canvas — runs exactly once on mount.
+  // All callback props and activeTool are read via refs to avoid re-creating the canvas.
   useEffect(() => {
     if (!containerRef.current || !canvasRef.current) return;
 
     const width = containerRef.current.clientWidth;
     const height = containerRef.current.clientHeight;
 
-    console.log("[NETLAB-WIRE-DEBUG] Initializing Fabric Canvas:", { width, height, activeTool });
+    console.log("[NETLAB-WIRE-DEBUG] Initializing Fabric Canvas:", { width, height });
 
     const canvas = new FabricCanvas(canvasRef.current, {
       width,
@@ -299,12 +314,12 @@ export function Canvas({
     const handleKeyDown = (e) => {
       if (e.key === "Delete" || e.key === "Backspace") {
         const activeObj = canvas.getActiveObject();
-        if (activeObj?.isNodeGroup && onDeleteNode) {
+        if (activeObj?.isNodeGroup && onDeleteNodeRef.current) {
           console.log("[NETLAB-WIRE-DEBUG] Delete key pressed for node:", activeObj.nodeData.id);
-          onDeleteNode(activeObj.nodeData.id);
-        } else if (activeObj?.isWireLine && onDeleteWire) {
+          onDeleteNodeRef.current(activeObj.nodeData.id);
+        } else if (activeObj?.isWireLine && onDeleteWireRef.current) {
           console.log("[NETLAB-WIRE-DEBUG] Delete key pressed for wire:", activeObj.wireData.id);
-          onDeleteWire(activeObj.wireData.id);
+          onDeleteWireRef.current(activeObj.wireData.id);
         }
       } else if (e.key === "Escape") {
         cancelWiring();
@@ -435,7 +450,7 @@ export function Canvas({
       }
 
       setDebugInfo({
-        activeTool,
+        activeTool: activeToolRef.current,
         pointer,
         nodeId,
         subTargetTag,
@@ -517,7 +532,7 @@ export function Canvas({
         const portAbsPos = nearPort.absPos;
         const node = targetNodeGroup.nodeData;
 
-        if (activeTool === "wire" || subTarget?.portId || wiringStateRef.current.active) {
+        if (activeToolRef.current === "wire" || subTarget?.portId || wiringStateRef.current.active) {
           opt.e.stopPropagation();
 
           if (!wiringStateRef.current.active) {
@@ -553,7 +568,7 @@ export function Canvas({
           } else {
             const { srcNodeId, srcPortId } = wiringStateRef.current;
             if (srcNodeId !== node.id || srcPortId !== clickedPortId) {
-              onAddWire(srcNodeId, srcPortId, node.id, clickedPortId);
+              onAddWireRef.current(srcNodeId, srcPortId, node.id, clickedPortId);
             }
             cancelWiring();
           }
@@ -562,17 +577,17 @@ export function Canvas({
       }
 
       // SELECT TOOL MODE ONLY
-      if (activeTool === "select") {
+      if (activeToolRef.current === "select") {
         if (wiringStateRef.current.active) {
           cancelWiring();
         }
 
         if (target?.isNodeGroup) {
-          onSelectNode(target.nodeData);
+          onSelectNodeRef.current(target.nodeData);
         } else if (!target) {
-          onSelectNode(null);
+          onSelectNodeRef.current(null);
         }
-      } else if (activeTool === "wire" && wiringStateRef.current.active) {
+      } else if (activeToolRef.current === "wire" && wiringStateRef.current.active) {
         cancelWiring();
       }
     });
@@ -581,7 +596,7 @@ export function Canvas({
       lockViewportTransform();
       if (panStateRef.current.isPanning) {
         panStateRef.current.isPanning = false;
-        canvas.selection = activeTool === "select";
+        canvas.selection = activeToolRef.current === "select";
       }
     });
 
@@ -592,7 +607,8 @@ export function Canvas({
         fabricCanvasRef.current.dispose();
       }
     };
-  }, [cancelWiring, onSelectNode, onAddWire, onDeleteWire, onDeleteNode, activeTool]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cancelWiring, handleTestPulseWire]);
 
   // Sync Nodes and Wires on Canvas - Preserves existing Zoom & Pan ViewportTransform!
   useEffect(() => {
@@ -600,7 +616,7 @@ export function Canvas({
     if (!canvas || canvas.isDisposed) return;
 
     let isCancelled = false;
-    canvas.defaultCursor = activeTool === "wire" ? "crosshair" : "default";
+    canvas.defaultCursor = activeToolRef.current === "wire" ? "crosshair" : "default";
     const nodeGroupsMap = new Map();
 
     const renderAll = async () => {
@@ -628,7 +644,7 @@ export function Canvas({
         const tmpl = templates.find((t) => t.id === node.templateId);
         const svgStr = tmpl ? svgCache.get(tmpl.id) || "" : "";
 
-        const nodeGroup = await createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool);
+        const nodeGroup = await createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeToolRef.current);
         if (isCancelled || canvas.isDisposed) return;
 
         nodeGroup.lastValidLeft = node.x;
@@ -651,7 +667,7 @@ export function Canvas({
             nodes,
             wires,
             nodeGroupsMap,
-            onDeleteWire,
+            onDeleteWireRef.current,
             wirePolylineMapRef,
           );
         });
@@ -660,7 +676,7 @@ export function Canvas({
         nodeGroupsMap.set(node.id, nodeGroup);
       }
 
-      updateWirePositions(canvas, nodes, wires, nodeGroupsMap, onDeleteWire, wirePolylineMapRef);
+      updateWirePositions(canvas, nodes, wires, nodeGroupsMap, onDeleteWireRef.current, wirePolylineMapRef);
       if (!isCancelled && !canvas.isDisposed) {
         canvas.requestRenderAll();
       }
@@ -671,7 +687,7 @@ export function Canvas({
     return () => {
       isCancelled = true;
     };
-  }, [nodes, wires, templates, onDeleteWire, activeTool]);
+  }, [nodes, wires, templates, activeTool]);
 
   return (
     <div className="canvas-wrapper" ref={containerRef}>
