@@ -322,6 +322,11 @@ export function Canvas({
     window.addEventListener("resize", handleResize);
 
     const handleKeyDown = (e) => {
+      const tag = document.activeElement?.tagName.toLowerCase();
+      if (tag === "input" || tag === "textarea" || document.activeElement?.isContentEditable) {
+        return;
+      }
+
       if (e.key === "Delete" || e.key === "Backspace") {
         const activeObj = canvas.getActiveObject();
         if (activeObj?.isNodeGroup && onDeleteNodeRef.current) {
