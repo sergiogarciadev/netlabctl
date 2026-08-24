@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build && mkdir -p ../internal/server/dist && cp -r dist/* ../internal/server/dist/",
     "lint": "biome check .",
+    "format": "biome format --write .",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -68,5 +68,5 @@
 ---
 
 ## 5. Frontend Code Quality & Biome Guidelines
-- **Lint Verification Requirement**: Always run `cd client && npm run lint` before declaring frontend tasks complete to verify formatting and React hook exhaustive dependencies.
-- **System Biome Version**: Use system Biome version `2.5.9` (`@biomejs/biome: "^2.5.9"` in `client/package.json`) and configure `client/biome.json` with `files.include` and `files.ignore` arrays.
+- **Lint & Format Verification Requirement**: Always run `cd client && npm run format && npm run lint` before declaring frontend tasks complete to format files and verify React hook exhaustive dependencies.
+- **System Biome Version**: Use system Biome version `2.5.9` (`@biomejs/biome: "^2.5.9"` in `client/package.json`) and execute formatting via `npm run format` (`biome format --write .`).
