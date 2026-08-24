@@ -28,15 +28,26 @@ export function App() {
   });
   const [selectedNode, setSelectedNode] = useState(null);
   const [activeTerminalNodes, setActiveTerminalNodes] = useState([]);
+  const [focusedTerminalNodeId, setFocusedTerminalNodeId] = useState(null);
+  const [terminalOrder, setTerminalOrder] = useState([]);
 
-  const handleOpenTerminal = useCallback((node) => {
-    setActiveTerminalNodes((prev) => {
-      if (prev.some((n) => n.id === node.id)) {
-        return prev;
-      }
-      return [...prev, node];
-    });
+  const handleFocusTerminal = useCallback((nodeId) => {
+    setFocusedTerminalNodeId(nodeId);
+    setTerminalOrder((prev) => [...prev.filter((id) => id !== nodeId), nodeId]);
   }, []);
+
+  const handleOpenTerminal = useCallback(
+    (node) => {
+      setActiveTerminalNodes((prev) => {
+        if (prev.some((n) => n.id === node.id)) {
+          return prev;
+        }
+        return [...prev, node];
+      });
+      handleFocusTerminal(node.id);
+    },
+    [handleFocusTerminal],
+  );
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [activeTool, setActiveTool] = useState("select");
@@ -527,34 +538,49 @@ export function App() {
                       zIndex: 30,
                     }}
                   >
-                    {dockedNodes.map((node, idx) => (
-                      <div key={node.id} style={{ flex: 1, minWidth: 0 }}>
-                        <TerminalWindow
-                          projectId={project.id}
-                          node={node}
-                          terminalIndex={idx}
-                          totalTerminals={dockedNodes.length}
-                          onClose={() =>
-                            setActiveTerminalNodes((prev) => prev.filter((n) => n.id !== node.id))
-                          }
-                        />
-                      </div>
-                    ))}
+                    {dockedNodes.map((node, idx) => {
+                      const isFocused = focusedTerminalNodeId === node.id;
+                      return (
+                        <div key={node.id} style={{ flex: 1, minWidth: 0 }}>
+                          <TerminalWindow
+                            projectId={project.id}
+                            node={node}
+                            terminalIndex={idx}
+                            totalTerminals={dockedNodes.length}
+                            isFocused={isFocused}
+                            onFocus={() => handleFocusTerminal(node.id)}
+                            onClose={() =>
+                              setActiveTerminalNodes((prev) => prev.filter((n) => n.id !== node.id))
+                            }
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
-                {detachedNodes.map((node, idx) => (
-                  <TerminalWindow
-                    key={node.id}
-                    projectId={project.id}
-                    node={node}
-                    terminalIndex={dockedNodes.length + idx}
-                    totalTerminals={activeTerminalNodes.length}
-                    onClose={() =>
-                      setActiveTerminalNodes((prev) => prev.filter((n) => n.id !== node.id))
-                    }
-                  />
-                ))}
+                {detachedNodes.map((node, idx) => {
+                  const isFocused = focusedTerminalNodeId === node.id;
+                  const orderIdx = terminalOrder.indexOf(node.id);
+                  const computedZIndex =
+                    orderIdx >= 0 ? 200 + orderIdx * 10 : isFocused ? 290 : 200 + idx;
+
+                  return (
+                    <TerminalWindow
+                      key={node.id}
+                      projectId={project.id}
+                      node={node}
+                      terminalIndex={dockedNodes.length + idx}
+                      totalTerminals={activeTerminalNodes.length}
+                      isFocused={isFocused}
+                      zIndex={computedZIndex}
+                      onFocus={() => handleFocusTerminal(node.id)}
+                      onClose={() =>
+                        setActiveTerminalNodes((prev) => prev.filter((n) => n.id !== node.id))
+                      }
+                    />
+                  );
+                })}
               </>
             );
           })()}

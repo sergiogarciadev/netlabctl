@@ -10,6 +10,9 @@ export function TerminalWindow({
   onClose,
   terminalIndex = 0,
   totalTerminals = 1,
+  isFocused = false,
+  zIndex,
+  onFocus,
 }) {
   const terminalRef = useRef(null);
   const fitAddonRef = useRef(null);
@@ -261,12 +264,14 @@ export function TerminalWindow({
     top: `${layout.y}px`,
     width: `${layout.width}px`,
     height: `${layout.height}px`,
-    zIndex: 200 + terminalIndex,
+    zIndex: typeof zIndex === "number" ? zIndex : isFocused ? 290 : 200 + terminalIndex,
     background: "rgba(15, 23, 42, 0.95)",
     backdropFilter: "blur(16px)",
     borderRadius: "8px",
-    border: "1px solid var(--accent-primary)",
-    boxShadow: "0 12px 36px rgba(0,0,0,0.8)",
+    border: isFocused ? "1px solid #38bdf8" : "1px solid var(--border-color)",
+    boxShadow: isFocused
+      ? "0 14px 40px rgba(0,0,0,0.9), 0 0 16px rgba(56,189,248,0.35)"
+      : "0 8px 24px rgba(0,0,0,0.6)",
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
@@ -277,7 +282,7 @@ export function TerminalWindow({
     width: "100%",
     height: `${layout.height}px`,
     background: "#090d16",
-    borderTop: "1px solid var(--border-color)",
+    borderTop: isFocused ? "1px solid #38bdf8" : "1px solid var(--border-color)",
     borderRight: "1px solid var(--border-color)",
     display: "flex",
     flexDirection: "column",
@@ -288,6 +293,7 @@ export function TerminalWindow({
   return (
     <div
       className="terminal-window-instance"
+      onMouseDown={onFocus}
       style={layout.isDetached ? detachedStyle : dockedStyle}
     >
       {/* Top Drag/Resize Handle */}
