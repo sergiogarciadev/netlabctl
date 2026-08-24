@@ -100,10 +100,14 @@ export function TerminalWindow({ node, onClose }) {
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
       socket.close();
       term.dispose();
     };
-  }, [node]);
+  }, [node, handleMouseMove, handleMouseUp]);
 
   return (
     <div className="terminal-modal" style={{ height: `${height}px` }}>

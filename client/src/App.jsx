@@ -99,6 +99,11 @@ export function App() {
   // Global Keyboard listener for Undo (Ctrl+Z) and Redo (Ctrl+Y / Ctrl+Shift+Z)
   useEffect(() => {
     const handleKeyDown = (e) => {
+      const tag = document.activeElement?.tagName.toLowerCase();
+      if (tag === "input" || tag === "textarea" || document.activeElement?.isContentEditable) {
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         if (e.shiftKey) {
           handleRedo();
