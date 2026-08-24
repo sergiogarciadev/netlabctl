@@ -28,6 +28,11 @@ export function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [activeTool, setActiveTool] = useState("select");
 
+  // Stable ref for project state — allows useCallback handlers to always
+  // read the latest project without needing project in their dependency arrays.
+  const projectRef = useRef(project);
+  useEffect(() => { projectRef.current = project; }, [project]);
+
   // History State Stack for Undo / Redo
   const historyRef = useRef([]);
   const historyIndexRef = useRef(-1);
@@ -168,54 +173,56 @@ export function App() {
     return () => ws.disconnect();
   }, [updateHistoryButtons]);
 
-  const handleStartLab = async () => {
+  const handleStartLab = useCallback(async () => {
     setIsRunning(true);
     try {
-      await startProjectSimulation(project.id);
+      await startProjectSimulation(projectRef.current.id);
     } catch (err) {
       console.error("[NETLAB-APP-DEBUG] Failed to start simulation via REST:", err);
     }
-    wsClientRef.current?.startSimulation(project.id);
-  };
+    wsClientRef.current?.startSimulation(projectRef.current.id);
+  }, []);
 
-  const handleStopLab = async () => {
+  const handleStopLab = useCallback(async () => {
     setIsRunning(false);
     try {
-      await stopProjectSimulation(project.id);
+      await stopProjectSimulation(projectRef.current.id);
     } catch (err) {
       console.error("[NETLAB-APP-DEBUG] Failed to stop simulation via REST:", err);
     }
-    wsClientRef.current?.stopSimulation(project.id);
-  };
+    wsClientRef.current?.stopSimulation(projectRef.current.id);
+  }, []);
 
-  const handleAddNodeFromTemplate = async (tmpl) => {
+  const handleAddNodeFromTemplate = useCallback(async (tmpl) => {
     try {
-      const count = project.nodes?.length || 0;
+      const proj = projectRef.current;
+      const count = proj.nodes?.length || 0;
       const posX = 100 + (count % 3) * 240;
       const posY = 120 + Math.floor(count / 3) * 200;
       console.log("[NETLAB-APP-DEBUG] Adding node from template:", tmpl.id, { posX, posY });
-      const newNode = await addNodeToProject(project.id, tmpl.id, "", posX, posY);
-      const updatedNodes = [...(project.nodes || []), newNode];
-      const updatedProject = { ...project, nodes: updatedNodes };
+      const newNode = await addNodeToProject(proj.id, tmpl.id, "", posX, posY);
+      const updatedNodes = [...(proj.nodes || []), newNode];
+      const updatedProject = { ...proj, nodes: updatedNodes };
 
       commitProjectUpdate(updatedProject, true);
       setSelectedNode(newNode);
     } catch (err) {
       console.error("[NETLAB-APP-DEBUG] Failed to add node from template:", err);
     }
-  };
+  }, [commitProjectUpdate]);
 
-  const handleAddWire = async (srcNodeId, srcPortId, dstNodeId, dstPortId) => {
+  const handleAddWire = useCallback(async (srcNodeId, srcPortId, dstNodeId, dstPortId) => {
+    const proj = projectRef.current;
     console.log("[NETLAB-APP-DEBUG] Requesting wire creation:", {
       srcNodeId,
       srcPortId,
       dstNodeId,
       dstPortId,
-      currentWires: project.wires,
+      currentWires: proj.wires,
     });
 
     const isPortConnected = (nodeId, portId) => {
-      return (project.wires || []).some(
+      return (proj.wires || []).some(
         (w) =>
           (w.srcNodeId === nodeId && w.srcPortId === portId) ||
           (w.dstNodeId === nodeId && w.dstPortId === portId),
@@ -241,25 +248,27 @@ export function App() {
       dstPortId,
     };
 
-    const updatedWires = [...(project.wires || []), newWire];
-    const updatedProject = { ...project, wires: updatedWires };
+    const updatedWires = [...(proj.wires || []), newWire];
+    const updatedProject = { ...proj, wires: updatedWires };
     console.log("[NETLAB-APP-DEBUG] Wire created successfully:", newWire);
     commitProjectUpdate(updatedProject, true);
-  };
+  }, [commitProjectUpdate]);
 
-  const handleDeleteWire = async (wireId) => {
+  const handleDeleteWire = useCallback(async (wireId) => {
+    const proj = projectRef.current;
     console.log("[NETLAB-APP-DEBUG] Deleting wire:", wireId);
-    const updatedWires = (project.wires || []).filter((w) => w.id !== wireId);
-    const updatedProject = { ...project, wires: updatedWires };
+    const updatedWires = (proj.wires || []).filter((w) => w.id !== wireId);
+    const updatedProject = { ...proj, wires: updatedWires };
     commitProjectUpdate(updatedProject, true);
-  };
+  }, [commitProjectUpdate]);
 
-  const handleUpdateWire = async (updatedWire) => {
+  const handleUpdateWire = useCallback(async (updatedWire) => {
+    const proj = projectRef.current;
     console.log("[NETLAB-APP-DEBUG] Updating wire:", updatedWire);
-    const updatedWires = (project.wires || []).map((w) =>
+    const updatedWires = (proj.wires || []).map((w) =>
       w.id === updatedWire.id ? updatedWire : w,
     );
-    const updatedProject = { ...project, wires: updatedWires };
+    const updatedProject = { ...proj, wires: updatedWires };
     commitProjectUpdate(updatedProject, true);
 
     if (updatedWire.conditions) {
@@ -268,28 +277,34 @@ export function App() {
     if (updatedWire.tzspTarget !== undefined) {
       wsClientRef.current?.enableTZSP(updatedWire.id, updatedWire.tzspTarget);
     }
-  };
+  }, [commitProjectUpdate]);
 
-  const handleUpdateNode = async (updatedNode) => {
+  const handleUpdateNode = useCallback(async (updatedNode) => {
+    const proj = projectRef.current;
     console.log("[NETLAB-APP-DEBUG] Updating node:", updatedNode);
-    const updatedNodes = (project.nodes || []).map((n) =>
+    const updatedNodes = (proj.nodes || []).map((n) =>
       n.id === updatedNode.id ? updatedNode : n,
     );
-    const updatedProject = { ...project, nodes: updatedNodes };
+    const updatedProject = { ...proj, nodes: updatedNodes };
     setSelectedNode(updatedNode);
     commitProjectUpdate(updatedProject, true);
-  };
+  }, [commitProjectUpdate]);
 
-  const handleDeleteNode = async (nodeId) => {
+  const handleDeleteNode = useCallback(async (nodeId) => {
+    const proj = projectRef.current;
     console.log("[NETLAB-APP-DEBUG] Deleting node:", nodeId);
-    const updatedNodes = (project.nodes || []).filter((n) => n.id !== nodeId);
-    const updatedWires = (project.wires || []).filter(
+    const updatedNodes = (proj.nodes || []).filter((n) => n.id !== nodeId);
+    const updatedWires = (proj.wires || []).filter(
       (w) => w.srcNodeId !== nodeId && w.dstNodeId !== nodeId,
     );
-    const updatedProject = { ...project, nodes: updatedNodes, wires: updatedWires };
+    const updatedProject = { ...proj, nodes: updatedNodes, wires: updatedWires };
     setSelectedNode(null);
     commitProjectUpdate(updatedProject, true);
-  };
+  }, [commitProjectUpdate]);
+
+  const handleSelectNode = useCallback((node) => {
+    setSelectedNode(node);
+  }, []);
 
   return (
     <div className="app-container">
@@ -319,7 +334,7 @@ export function App() {
           wireStats={wireStats}
           templates={templates}
           activeTool={activeTool}
-          onSelectNode={(node) => setSelectedNode(node)}
+          onSelectNode={handleSelectNode}
           onAddWire={handleAddWire}
           onDeleteWire={handleDeleteWire}
           onDeleteNode={handleDeleteNode}
