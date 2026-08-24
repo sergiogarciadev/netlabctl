@@ -487,6 +487,7 @@ export function App() {
 
         {activeTerminalNode && (
           <TerminalWindow
+            projectId={project.id}
             node={activeTerminalNode}
             onClose={() => setActiveTerminalNode(null)}
             wsClient={wsClientRef.current}

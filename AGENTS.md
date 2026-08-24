@@ -64,3 +64,9 @@
 - **Vite WebSocket Proxy**: In `vite.config.js`, set `ws: true` for the `/api` proxy rule (in addition to `/ws`).
 - **Terminal Host Resolution**: In `TerminalWindow.jsx`, resolve host to port `8080` when running under Vite dev mode (`window.location.port === "3000"`).
 - **Standby & Auto-Reconnect**: When a machine is powered off, display `Machine is powered off. Waiting for machine to start...` in `xterm.js`. Automatically poll and reconnect to the node's QEMU `serial.sock` as soon as the simulation is launched.
+
+---
+
+## 5. Frontend Code Quality & Biome Guidelines
+- **Lint Verification Requirement**: Always run `cd client && npm run lint` before declaring frontend tasks complete to verify formatting and React hook exhaustive dependencies.
+- **System Biome Version**: Use system Biome version `2.5.9` (`@biomejs/biome: "^2.5.9"` in `client/package.json`) and configure `client/biome.json` with `files.include` and `files.ignore` arrays.

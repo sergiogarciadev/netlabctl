@@ -4,7 +4,7 @@ import { Maximize2, Minimize2, Move, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 
-export function TerminalWindow({ node, onClose }) {
+export function TerminalWindow({ projectId, node, onClose }) {
   const terminalRef = useRef(null);
   const fitAddonRef = useRef(null);
   const [height, setHeight] = useState(320);
@@ -71,7 +71,7 @@ export function TerminalWindow({ node, onClose }) {
     const host =
       window.location.port === "3000" ? `${window.location.hostname}:8080` : window.location.host;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${host}/api/v1/projects/default/nodes/${node.id}/terminal`;
+    const wsUrl = `${protocol}//${host}/api/v1/projects/${projectId || "default"}/nodes/${node.id}/terminal`;
 
     console.log("[NETLAB-TERMINAL-DEBUG] Opening terminal WebSocket connection:", wsUrl);
     const socket = new WebSocket(wsUrl);
@@ -107,7 +107,7 @@ export function TerminalWindow({ node, onClose }) {
       socket.close();
       term.dispose();
     };
-  }, [node, handleMouseMove, handleMouseUp]);
+  }, [projectId, node, handleMouseMove, handleMouseUp]);
 
   return (
     <div className="terminal-modal" style={{ height: `${height}px` }}>
