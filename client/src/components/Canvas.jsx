@@ -1081,19 +1081,35 @@ function updateWirePositions(
           wire.dstPortId,
         );
 
+        const baseColor = wire.tzspTarget ? "#f59e0b" : "#10b981";
         const wirePolyline = new Polyline(orthoPoints, {
-          stroke: wire.tzspTarget ? "#f59e0b" : "#10b981",
+          stroke: baseColor,
           strokeWidth: 3,
           fill: "transparent",
           strokeLineJoin: "round",
           strokeLineCap: "round",
           selectable: true,
+          lockMovementX: true,
+          lockMovementY: true,
+          lockRotation: true,
+          lockScalingX: true,
+          lockScalingY: true,
           hasBorders: false,
           hasControls: false,
           objectCaching: false,
         });
         wirePolyline.isWireLine = true;
         wirePolyline.wireData = wire;
+
+        wirePolyline.on("selected", () => {
+          wirePolyline.set({ stroke: "#38bdf8", strokeWidth: 5 });
+          canvas.requestRenderAll();
+        });
+
+        wirePolyline.on("deselected", () => {
+          wirePolyline.set({ stroke: baseColor, strokeWidth: 3 });
+          canvas.requestRenderAll();
+        });
 
         if (wirePolylineMapRef?.current) {
           wirePolylineMapRef.current.set(wire.id, {
