@@ -235,7 +235,8 @@ export function App() {
         updateProjectState(top);
         historyRef.current = [JSON.parse(JSON.stringify(top))];
         historyIndexRef.current = 0;
-        updateHistoryButtons();
+        setCanUndo(false);
+        setCanRedo(false);
       })
       .catch(() => {
         const initTop = {
@@ -248,7 +249,8 @@ export function App() {
           updateProjectState(top);
           historyRef.current = [JSON.parse(JSON.stringify(top))];
           historyIndexRef.current = 0;
-          updateHistoryButtons();
+          setCanUndo(false);
+          setCanRedo(false);
           loadProjectsList();
         });
       });
@@ -272,7 +274,7 @@ export function App() {
     wsClientRef.current = ws;
 
     return () => ws.disconnect();
-  }, [updateHistoryButtons, loadProjectsList]);
+  }, [loadProjectsList]);
 
   const handleStartLab = useCallback(async () => {
     setIsRunning(true);
