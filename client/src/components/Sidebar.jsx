@@ -806,6 +806,7 @@ export function Sidebar({
         style={{
           marginTop: "auto",
           paddingTop: "14px",
+          paddingBottom: "60px",
           display: "flex",
           flexDirection: "column",
           gap: "8px",
