@@ -357,7 +357,9 @@ func (m *Manager) createCloudInitISO(nDir string, node *model.Node, tmpl *model.
 		metadata = tmpl.Metadata
 	}
 
-	if userdata == "" && metadata == "" {
+	if strings.TrimSpace(userdata) == "" && strings.TrimSpace(metadata) == "" {
+		isoPath := filepath.Join(nDir, "cidata.iso")
+		_ = os.Remove(isoPath)
 		return "", nil
 	}
 
