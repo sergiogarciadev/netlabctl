@@ -20,6 +20,7 @@ export function Canvas({
   wireStats = [],
   templates,
   activeTool,
+  selectedNode = null,
   onSelectNode,
   onAddWire,
   onDeleteWire,
@@ -741,12 +742,13 @@ export function Canvas({
     <div className="canvas-wrapper" ref={containerRef}>
       <canvas ref={canvasRef} id="netlab-canvas" />
 
-      {/* Floating Zoom HUD Controls */}
+      {/* Floating Zoom HUD Controls — shifts left when sidebar is open */}
       <div
         style={{
           position: "absolute",
           bottom: "16px",
-          right: "16px",
+          right: selectedNode ? "356px" : "16px",
+          transition: "right 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
           display: "flex",
           alignItems: "center",
           gap: "6px",

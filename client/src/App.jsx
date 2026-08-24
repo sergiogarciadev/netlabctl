@@ -461,6 +461,7 @@ export function App() {
           wireStats={wireStats}
           templates={templates}
           activeTool={activeTool}
+          selectedNode={selectedNode}
           onSelectNode={handleSelectNode}
           onAddWire={handleAddWire}
           onDeleteWire={handleDeleteWire}
