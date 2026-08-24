@@ -24,15 +24,23 @@ type WireProxyStats struct {
 	TZSPActive    bool   `json:"tzspActive"`
 }
 
+type EthernetFrame struct {
+	Header  []byte // 4-byte length header
+	Payload []byte
+}
+
 type ManagedPortSocket struct {
-	Key      string // "nodeID:portID"
-	NodeID   string
-	PortID   string
-	IP       string
-	Port     int
-	listener net.Listener
-	conn     net.Conn
-	mu       sync.Mutex
+	Key         string // "nodeID:portID"
+	NodeID      string
+	PortID      string
+	IP          string
+	Port        int
+	listener    net.Listener
+	conn        net.Conn
+	mu          sync.Mutex
+	nextSubID   uint64
+	subscribers map[uint64]chan EthernetFrame
+	readerStop  chan struct{}
 }
 
 type WireBridge struct {
@@ -124,12 +132,13 @@ func (nm *NetworkManager) RegisterPortListener(nodeID, portID, ip string, port i
 	}
 
 	ps := &ManagedPortSocket{
-		Key:      key,
-		NodeID:   nodeID,
-		PortID:   portID,
-		IP:       ip,
-		Port:     port,
-		listener: listener,
+		Key:         key,
+		NodeID:      nodeID,
+		PortID:      portID,
+		IP:          ip,
+		Port:        port,
+		listener:    listener,
+		subscribers: make(map[uint64]chan EthernetFrame),
 	}
 
 	nm.portSockets[key] = ps
@@ -145,13 +154,104 @@ func (nm *NetworkManager) RegisterPortListener(nodeID, portID, ip string, port i
 			if ps.conn != nil {
 				_ = ps.conn.Close()
 			}
+			if ps.readerStop != nil {
+				close(ps.readerStop)
+			}
 			ps.conn = conn
+			stopCh := make(chan struct{})
+			ps.readerStop = stopCh
 			ps.mu.Unlock()
+
 			logger.Log.Info("QEMU connected to managed port socket", "key", key, "addr", addrStr)
+			go ps.readFramesLoop(conn, stopCh)
 		}
 	}()
 
 	return ps, nil
+}
+
+func (ps *ManagedPortSocket) readFramesLoop(conn net.Conn, stopCh chan struct{}) {
+	defer conn.Close()
+
+	header := make([]byte, 4)
+	for {
+		select {
+		case <-stopCh:
+			return
+		default:
+		}
+
+		_, err := io.ReadFull(conn, header)
+		if err != nil {
+			return
+		}
+
+		pktLen := binary.BigEndian.Uint32(header)
+		if pktLen == 0 || pktLen > 65536 {
+			return
+		}
+
+		payload := make([]byte, pktLen)
+		_, err = io.ReadFull(conn, payload)
+		if err != nil {
+			return
+		}
+
+		hdrCopy := make([]byte, 4)
+		copy(hdrCopy, header)
+		frame := EthernetFrame{
+			Header:  hdrCopy,
+			Payload: payload,
+		}
+
+		ps.mu.Lock()
+		for _, ch := range ps.subscribers {
+			select {
+			case ch <- frame:
+			default:
+				// If subscriber queue is full, drop frame to avoid blocking frame reader loop
+			}
+		}
+		ps.mu.Unlock()
+	}
+}
+
+func (ps *ManagedPortSocket) Subscribe() (uint64, chan EthernetFrame) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	ps.nextSubID++
+	id := ps.nextSubID
+	ch := make(chan EthernetFrame, 256)
+	ps.subscribers[id] = ch
+	return id, ch
+}
+
+func (ps *ManagedPortSocket) Unsubscribe(id uint64) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	if ch, ok := ps.subscribers[id]; ok {
+		delete(ps.subscribers, id)
+		close(ch)
+	}
+}
+
+func (ps *ManagedPortSocket) WriteFrame(header, payload []byte) error {
+	ps.mu.Lock()
+	conn := ps.conn
+	ps.mu.Unlock()
+
+	if conn == nil {
+		return fmt.Errorf("no connection for port %s", ps.Key)
+	}
+
+	_, err := conn.Write(header)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Write(payload)
+	return err
 }
 
 // AddWireBridge connects two registered managed port sockets.
@@ -222,114 +322,68 @@ func (nm *NetworkManager) RemoveWireBridge(wireID string) {
 }
 
 func (b *WireBridge) runBridge() {
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
+	subIDA, chA := b.PortA.Subscribe()
+	defer b.PortA.Unsubscribe(subIDA)
 
-	var connA, connB net.Conn
+	subIDB, chB := b.PortB.Subscribe()
+	defer b.PortB.Unsubscribe(subIDB)
 
 	for {
 		select {
 		case <-b.stopChan:
 			return
-		case <-ticker.C:
-			b.PortA.mu.Lock()
-			cA := b.PortA.conn
-			b.PortA.mu.Unlock()
-
-			b.PortB.mu.Lock()
-			cB := b.PortB.conn
-			b.PortB.mu.Unlock()
-
-			if cA != nil && cB != nil && (cA != connA || cB != connB) {
-				connA = cA
-				connB = cB
-				go b.bridgeForwarding(connA, connB)
+		case frameA, ok := <-chA:
+			if !ok {
+				return
 			}
+			b.processAndForward(frameA, b.PortB, &b.countSrcToDst)
+		case frameB, ok := <-chB:
+			if !ok {
+				return
+			}
+			b.processAndForward(frameB, b.PortA, &b.countDstToSrc)
 		}
 	}
 }
 
-func (b *WireBridge) bridgeForwarding(cA, cB net.Conn) {
-	var wg sync.WaitGroup
-	wg.Add(2)
+func (b *WireBridge) processAndForward(frame EthernetFrame, dst *ManagedPortSocket, dirCounter *int64) {
+	pktLen := uint32(len(frame.Payload))
 
-	// Forward A -> B (Src -> Dst) with QEMU stream framing (4-byte length + payload)
-	go func() {
-		defer wg.Done()
-		b.forwardStream(cA, cB, &b.countSrcToDst)
-	}()
-
-	// Forward B -> A (Dst -> Src) with QEMU stream framing (4-byte length + payload)
-	go func() {
-		defer wg.Done()
-		b.forwardStream(cB, cA, &b.countDstToSrc)
-	}()
-
-	wg.Wait()
-}
-
-func (b *WireBridge) forwardStream(src, dst net.Conn, dirCounter *int64) {
-	header := make([]byte, 4)
-	for {
-		_, err := io.ReadFull(src, header)
-		if err != nil {
-			return
-		}
-
-		pktLen := binary.BigEndian.Uint32(header)
-		if pktLen == 0 || pktLen > 65536 {
-			return
-		}
-
-		payload := make([]byte, pktLen)
-		_, err = io.ReadFull(src, payload)
-		if err != nil {
-			return
-		}
-
-		// 1. Packet Loss Impairment
-		lossPct := b.Wire.Conditions.LossPercent
-		if lossPct > 0 {
-			if rand.Float64()*100.0 < lossPct {
-				logger.Log.Debug("Dropped packet due to network condition loss", "wireID", b.Wire.ID, "lossPercent", lossPct)
-				continue // Drop frame
-			}
-		}
-
-		// 2. Delay & Jitter Impairment
-		delayMs := b.Wire.Conditions.DelayMs
-		if b.Wire.Conditions.JitterMs > 0 {
-			jit := rand.Intn(2*b.Wire.Conditions.JitterMs+1) - b.Wire.Conditions.JitterMs
-			delayMs += jit
-			if delayMs < 0 {
-				delayMs = 0
-			}
-		}
-
-		if delayMs > 0 {
-			time.Sleep(time.Duration(delayMs) * time.Millisecond)
-		}
-
-		atomic.AddInt64(&b.bytesCount, int64(pktLen))
-		atomic.AddInt64(&b.packetsCount, 1)
-		if dirCounter != nil {
-			atomic.AddInt64(dirCounter, 1)
-		}
-
-		if b.Wire.TZSPTarget != "" {
-			b.sendTZSPFrame(payload)
-		}
-
-		// Write 4-byte header + payload to destination QEMU socket
-		_, err = dst.Write(header)
-		if err != nil {
-			return
-		}
-		_, err = dst.Write(payload)
-		if err != nil {
-			return
+	// 1. Packet Loss Impairment
+	lossPct := b.Wire.Conditions.LossPercent
+	if lossPct > 0 {
+		if rand.Float64()*100.0 < lossPct {
+			logger.Log.Debug("Dropped packet due to network condition loss", "wireID", b.Wire.ID, "lossPercent", lossPct)
+			return // Drop frame
 		}
 	}
+
+	// 2. Delay & Jitter Impairment
+	delayMs := b.Wire.Conditions.DelayMs
+	if b.Wire.Conditions.JitterMs > 0 {
+		jit := rand.Intn(2*b.Wire.Conditions.JitterMs+1) - b.Wire.Conditions.JitterMs
+		delayMs += jit
+		if delayMs < 0 {
+			delayMs = 0
+		}
+	}
+
+	if delayMs > 0 {
+		time.Sleep(time.Duration(delayMs) * time.Millisecond)
+	}
+
+	atomic.AddInt64(&b.bytesCount, int64(pktLen))
+	atomic.AddInt64(&b.packetsCount, 1)
+	if dirCounter != nil {
+		atomic.AddInt64(dirCounter, 1)
+	}
+
+	if b.Wire.TZSPTarget != "" {
+		b.sendTZSPFrame(frame.Payload)
+	}
+
+	// Write 4-byte header + payload to destination QEMU socket
+	_ = dst.WriteFrame(frame.Header, frame.Payload)
 }
 
 func (b *WireBridge) sendTZSPFrame(payload []byte) {
@@ -366,6 +420,10 @@ func (nm *NetworkManager) StopAllProxies() {
 
 	for id, ps := range nm.portSockets {
 		ps.mu.Lock()
+		if ps.readerStop != nil {
+			close(ps.readerStop)
+			ps.readerStop = nil
+		}
 		if ps.listener != nil {
 			_ = ps.listener.Close()
 		}
