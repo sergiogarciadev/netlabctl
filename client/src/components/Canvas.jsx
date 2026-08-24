@@ -1136,6 +1136,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   }
 
   const nodePorts = node.ports || tmpl?.ports || [];
+  const portAnchors = new Map();
 
   const statusItems = tmpl?.status || [
     { id: "status-power", type: "power" },
@@ -1203,6 +1204,15 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         };
         tagChildren(obj);
 
+        // Dynamically compute exact center anchor coordinates from SVG element bounding box!
+        let cX = obj.left || 0;
+        let cY = obj.top || 0;
+        const w = (obj.width || 0) * (obj.scaleX || 1);
+        const h = (obj.height || 0) * (obj.scaleY || 1);
+        cX += w / 2;
+        cY += h / 2;
+        portAnchors.set(port.id, { x: cX, y: cY });
+
         const isConnected = wires.some(
           (w) =>
             (w.srcNodeId === node.id && w.srcPortId === port.id) ||
@@ -1248,9 +1258,14 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
 
   nodeGroup.portRelativePositions = new Map();
   nodePorts.forEach((port, idx) => {
-    const relX = 23 + idx * 25;
-    const relY = 38;
-    nodeGroup.portRelativePositions.set(port.id, { x: relX, y: relY });
+    if (portAnchors.has(port.id)) {
+      nodeGroup.portRelativePositions.set(port.id, portAnchors.get(port.id));
+    } else {
+      // Fallback index math if SVG port element is not present
+      const relX = 23 + idx * 25;
+      const relY = 38;
+      nodeGroup.portRelativePositions.set(port.id, { x: relX, y: relY });
+    }
   });
 
   nodeGroup.getPortAbsPosition = (portId) => {
