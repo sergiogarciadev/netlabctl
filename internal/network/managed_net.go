@@ -382,22 +382,26 @@ func (b *WireBridge) processAndForward(frame EthernetFrame, dst *ManagedPortSock
 		}
 	}
 
+	forwardFunc := func() {
+		atomic.AddInt64(&b.bytesCount, int64(pktLen))
+		atomic.AddInt64(&b.packetsCount, 1)
+		if dirCounter != nil {
+			atomic.AddInt64(dirCounter, 1)
+		}
+
+		if b.Wire.TZSPTarget != "" {
+			b.sendTZSPFrame(frame.Payload)
+		}
+
+		// Write 4-byte header + payload to destination QEMU socket
+		_ = dst.WriteFrame(frame.Header, frame.Payload)
+	}
+
 	if delayMs > 0 {
-		time.Sleep(time.Duration(delayMs) * time.Millisecond)
+		time.AfterFunc(time.Duration(delayMs)*time.Millisecond, forwardFunc)
+	} else {
+		forwardFunc()
 	}
-
-	atomic.AddInt64(&b.bytesCount, int64(pktLen))
-	atomic.AddInt64(&b.packetsCount, 1)
-	if dirCounter != nil {
-		atomic.AddInt64(dirCounter, 1)
-	}
-
-	if b.Wire.TZSPTarget != "" {
-		b.sendTZSPFrame(frame.Payload)
-	}
-
-	// Write 4-byte header + payload to destination QEMU socket
-	_ = dst.WriteFrame(frame.Header, frame.Payload)
 }
 
 func (b *WireBridge) sendTZSPFrame(payload []byte) {
