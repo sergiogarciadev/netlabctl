@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"sync"
@@ -536,105 +535,17 @@ func (s *Server) handleNodeTerminal(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	serialSock := s.qemuMgr.GetSerialSocketPath(projectID, nodeID)
+	hub := s.serialHubs.GetHub(projectID, nodeID, serialSock)
 
-	wsInput := make(chan []byte, 128)
-	wsDone := make(chan struct{})
-
-	// Read WS messages from client (keystrokes from xterm.js)
-	go func() {
-		defer close(wsDone)
-		for {
-			_, msg, err := conn.ReadMessage()
-			if err != nil {
-				return
-			}
-			select {
-			case wsInput <- msg:
-			default:
-			}
-		}
-	}()
-
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-
-	var activeSock net.Conn
-	var isConnected bool
-	sockClosed := make(chan struct{}, 1)
-
-	var writeMu sync.Mutex
-	safeWrite := func(msgType int, data []byte) error {
-		writeMu.Lock()
-		defer writeMu.Unlock()
-		return conn.WriteMessage(msgType, data)
-	}
-
-	showWaitingMessage := func() {
-		msg := fmt.Sprintf("\x1bc\r\n\x1b[1;36m=== Serial Console — %s ===\x1b[0m\r\n"+
-			"\x1b[33mMachine is powered off. Waiting for machine to start...\x1b[0m\r\n", nodeID)
-		_ = safeWrite(websocket.TextMessage, []byte(msg))
-	}
-
-	showWaitingMessage()
+	client := hub.Subscribe(conn)
+	defer hub.Unsubscribe(client)
 
 	for {
-		if !isConnected {
-			sock, err := net.Dial("unix", serialSock)
-			if err == nil {
-				activeSock = sock
-				isConnected = true
-				_ = safeWrite(websocket.TextMessage, []byte(fmt.Sprintf("\x1bc\r\n\x1b[1;32mConnected to %s QEMU Serial Console...\x1b[0m\r\n\r\n", nodeID)))
-
-				// Stream serial socket -> WebSocket
-				go func(s net.Conn) {
-					buf := make([]byte, 1024)
-					for {
-						n, err := s.Read(buf)
-						if n > 0 {
-							_ = safeWrite(websocket.TextMessage, buf[:n])
-						}
-						if err != nil {
-							_ = s.Close()
-							select {
-							case sockClosed <- struct{}{}:
-							default:
-							}
-							return
-						}
-					}
-				}(activeSock)
-			}
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			break
 		}
-
-		select {
-		case <-wsDone:
-			if activeSock != nil {
-				_ = activeSock.Close()
-			}
-			return
-
-		case <-sockClosed:
-			if activeSock != nil {
-				_ = activeSock.Close()
-			}
-			isConnected = false
-			activeSock = nil
-			showWaitingMessage()
-
-		case msg := <-wsInput:
-			if isConnected && activeSock != nil {
-				_, err := activeSock.Write(msg)
-				if err != nil {
-					_ = activeSock.Close()
-					isConnected = false
-					activeSock = nil
-					showWaitingMessage()
-				}
-			}
-
-		case <-ticker.C:
-			// Periodic retry tick when not connected
-		}
+		hub.WriteInput(msg)
 	}
 }
 

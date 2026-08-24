@@ -178,8 +178,11 @@ export function TerminalWindow({
     };
   }, [handleWindowMouseMove, handleWindowMouseUp]);
 
+  const nodeId = node?.id;
+  const nodeName = node?.name;
+
   useEffect(() => {
-    if (!node || !terminalRef.current) return;
+    if (!nodeId || !terminalRef.current) return;
 
     const term = new Terminal({
       theme: {
@@ -204,7 +207,7 @@ export function TerminalWindow({
     const host =
       window.location.port === "3000" ? `${window.location.hostname}:8080` : window.location.host;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${host}/api/v1/projects/${projectId || "default"}/nodes/${node.id}/terminal`;
+    const wsUrl = `${protocol}//${host}/api/v1/projects/${projectId || "default"}/nodes/${nodeId}/terminal`;
 
     const socket = new WebSocket(wsUrl);
 
@@ -215,7 +218,7 @@ export function TerminalWindow({
     };
 
     socket.onopen = () => {
-      term.writeln(`\x1b[1;32mConnected to serial console for ${node.name}...\x1b[0m\r\n`);
+      term.writeln(`\x1b[1;32mConnected to serial console for ${nodeName}...\x1b[0m\r\n`);
       sendSizeReport(term.rows, term.cols);
     };
 
@@ -255,7 +258,7 @@ export function TerminalWindow({
       socket.close();
       term.dispose();
     };
-  }, [projectId, node]);
+  }, [projectId, nodeId, nodeName]);
 
   // Floating Detached Window Style vs Docked Bottom Window Style
   const detachedStyle = {

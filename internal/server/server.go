@@ -19,12 +19,13 @@ var embeddedClientDist embed.FS
 
 // Server encapsulates the HTTP server, REST handlers, and WebSocket hub.
 type Server struct {
-	addr    string
-	storage *storage.Storage
-	qemuMgr *qemu.Manager
-	netMgr  *network.NetworkManager
-	hub     *WSHub
-	mux     *http.ServeMux
+	addr       string
+	storage    *storage.Storage
+	qemuMgr    *qemu.Manager
+	netMgr     *network.NetworkManager
+	hub        *WSHub
+	serialHubs *SerialHubManager
+	mux        *http.ServeMux
 }
 
 // NewServer initializes a new netlabctl HTTP and WS server instance.
@@ -33,12 +34,13 @@ func NewServer(addr string, store *storage.Storage) *Server {
 	netMgr := network.NewNetworkManager()
 
 	s := &Server{
-		addr:    addr,
-		storage: store,
-		qemuMgr: qemuMgr,
-		netMgr:  netMgr,
-		hub:     NewWSHub(store, qemuMgr, netMgr),
-		mux:     http.NewServeMux(),
+		addr:       addr,
+		storage:    store,
+		qemuMgr:    qemuMgr,
+		netMgr:     netMgr,
+		hub:        NewWSHub(store, qemuMgr, netMgr),
+		serialHubs: NewSerialHubManager(),
+		mux:        http.NewServeMux(),
 	}
 
 	s.routes()
