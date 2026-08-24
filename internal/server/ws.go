@@ -562,10 +562,17 @@ func (s *Server) handleNodeTerminal(w http.ResponseWriter, r *http.Request) {
 	var isConnected bool
 	sockClosed := make(chan struct{}, 1)
 
+	var writeMu sync.Mutex
+	safeWrite := func(msgType int, data []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		return conn.WriteMessage(msgType, data)
+	}
+
 	showWaitingMessage := func() {
 		msg := fmt.Sprintf("\x1bc\r\n\x1b[1;36m=== Serial Console — %s ===\x1b[0m\r\n"+
 			"\x1b[33mMachine is powered off. Waiting for machine to start...\x1b[0m\r\n", nodeID)
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(msg))
+		_ = safeWrite(websocket.TextMessage, []byte(msg))
 	}
 
 	showWaitingMessage()
@@ -576,7 +583,7 @@ func (s *Server) handleNodeTerminal(w http.ResponseWriter, r *http.Request) {
 			if err == nil {
 				activeSock = sock
 				isConnected = true
-				_ = conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\x1bc\r\n\x1b[1;32mConnected to %s QEMU Serial Console...\x1b[0m\r\n\r\n", nodeID)))
+				_ = safeWrite(websocket.TextMessage, []byte(fmt.Sprintf("\x1bc\r\n\x1b[1;32mConnected to %s QEMU Serial Console...\x1b[0m\r\n\r\n", nodeID)))
 
 				// Stream serial socket -> WebSocket
 				go func(s net.Conn) {
@@ -584,7 +591,7 @@ func (s *Server) handleNodeTerminal(w http.ResponseWriter, r *http.Request) {
 					for {
 						n, err := s.Read(buf)
 						if n > 0 {
-							_ = conn.WriteMessage(websocket.TextMessage, buf[:n])
+							_ = safeWrite(websocket.TextMessage, buf[:n])
 						}
 						if err != nil {
 							_ = s.Close()
