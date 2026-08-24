@@ -342,6 +342,16 @@ export function Canvas({
     };
     window.addEventListener("keydown", handleKeyDown);
 
+    const handleWindowMouseUp = (e) => {
+      if (fabricCanvasRef.current && !fabricCanvasRef.current.isDisposed) {
+        const c = fabricCanvasRef.current;
+        if (c._currentTransform) {
+          c._onMouseUp(e);
+        }
+      }
+    };
+    window.addEventListener("mouseup", handleWindowMouseUp);
+
     // Mouse wheel zoom handler
     canvas.on("mouse:wheel", (opt) => {
       const delta = opt.e.deltaY;
@@ -622,6 +632,7 @@ export function Canvas({
     return () => {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
       if (fabricCanvasRef.current && !fabricCanvasRef.current.isDisposed) {
         fabricCanvasRef.current.dispose();
       }
@@ -693,9 +704,13 @@ export function Canvas({
 
         // Persist final position to React state + backend after drag ends
         nodeGroup.on("modified", () => {
-          if (onUpdateNodeRef.current) {
-            onUpdateNodeRef.current({ ...node, x: nodeGroup.left, y: nodeGroup.top });
-          }
+          const finalLeft = nodeGroup.left;
+          const finalTop = nodeGroup.top;
+          setTimeout(() => {
+            if (onUpdateNodeRef.current) {
+              onUpdateNodeRef.current({ ...node, x: finalLeft, y: finalTop });
+            }
+          }, 0);
         });
 
         canvas.add(nodeGroup);
