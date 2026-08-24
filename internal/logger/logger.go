@@ -5,19 +5,20 @@ import (
 	"os"
 )
 
-var Log *slog.Logger
+var (
+	LogLevelVar = new(slog.LevelVar)
+	Log         *slog.Logger
+)
 
 func init() {
+	LogLevelVar.Set(slog.LevelDebug)
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+		Level: LogLevelVar,
 	})
 	Log = slog.New(handler)
 }
 
-// SetLevel updates log verbosity.
+// SetLevel updates log verbosity safely without reassigning the global logger pointer.
 func SetLevel(level slog.Level) {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
-	})
-	Log = slog.New(handler)
+	LogLevelVar.Set(level)
 }
