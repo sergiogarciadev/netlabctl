@@ -58,6 +58,10 @@ type WireBridge struct {
 	last100msSrcDst int64
 	last100msDstSrc int64
 	stopChan        chan struct{}
+
+	tzspMu     sync.Mutex
+	tzspTarget string
+	tzspConn   *net.UDPConn
 }
 
 type NetworkManager struct {
@@ -328,6 +332,16 @@ func (b *WireBridge) runBridge() {
 	subIDB, chB := b.PortB.Subscribe()
 	defer b.PortB.Unsubscribe(subIDB)
 
+	defer func() {
+		b.tzspMu.Lock()
+		if b.tzspConn != nil {
+			_ = b.tzspConn.Close()
+			b.tzspConn = nil
+			b.tzspTarget = ""
+		}
+		b.tzspMu.Unlock()
+	}()
+
 	for {
 		select {
 		case <-b.stopChan:
@@ -387,25 +401,44 @@ func (b *WireBridge) processAndForward(frame EthernetFrame, dst *ManagedPortSock
 }
 
 func (b *WireBridge) sendTZSPFrame(payload []byte) {
-	if b.Wire.TZSPTarget == "" {
+	target := b.Wire.TZSPTarget
+	if target == "" {
+		b.tzspMu.Lock()
+		if b.tzspConn != nil {
+			_ = b.tzspConn.Close()
+			b.tzspConn = nil
+			b.tzspTarget = ""
+		}
+		b.tzspMu.Unlock()
 		return
 	}
 
-	udpAddr, err := net.ResolveUDPAddr("udp", b.Wire.TZSPTarget)
-	if err != nil {
-		return
-	}
+	b.tzspMu.Lock()
+	defer b.tzspMu.Unlock()
 
-	conn, err := net.DialUDP("udp", nil, udpAddr)
-	if err != nil {
-		return
+	if b.tzspConn == nil || b.tzspTarget != target {
+		if b.tzspConn != nil {
+			_ = b.tzspConn.Close()
+			b.tzspConn = nil
+		}
+		udpAddr, err := net.ResolveUDPAddr("udp", target)
+		if err != nil {
+			b.tzspTarget = ""
+			return
+		}
+		conn, err := net.DialUDP("udp", nil, udpAddr)
+		if err != nil {
+			b.tzspTarget = ""
+			return
+		}
+		b.tzspConn = conn
+		b.tzspTarget = target
 	}
-	defer conn.Close()
 
 	// TZSP Header: Version 1 (0x01), Type Rx (0x00), Protocol Ethernet (0x0001), Tag End (0x01)
 	tzspHeader := []byte{0x01, 0x00, 0x00, 0x01, 0x01}
 	packet := append(tzspHeader, payload...)
-	_, _ = conn.Write(packet)
+	_, _ = b.tzspConn.Write(packet)
 }
 
 // StopAllProxies closes all managed port listeners and bridges.
