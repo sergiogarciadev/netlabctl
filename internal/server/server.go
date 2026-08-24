@@ -1,14 +1,21 @@
 package server
 
 import (
+	"embed"
+	"io/fs"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"netlabctl/internal/logger"
 	"netlabctl/internal/network"
 	"netlabctl/internal/qemu"
 	"netlabctl/internal/storage"
 )
+
+//go:embed all:dist
+var embeddedClientDist embed.FS
 
 // Server encapsulates the HTTP server, REST handlers, and WebSocket hub.
 type Server struct {
@@ -56,9 +63,43 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/ws", s.handleWS)
 	s.mux.HandleFunc("/api/v1/projects/{id}/nodes/{nodeId}/terminal", s.handleNodeTerminal)
 
-	// Static client file server (if client dist directory exists)
-	clientDist := filepath.Join(s.storage.BaseDir(), "..", "client", "dist")
-	s.mux.Handle("/", http.FileServer(http.Dir(clientDist)))
+	// Single-binary distribution: Serve embedded client/dist with disk fallback for dev mode
+	var staticFS http.FileSystem
+
+	distSubFS, err := fs.Sub(embeddedClientDist, "dist")
+	if err == nil {
+		if _, err := distSubFS.Open("index.html"); err == nil {
+			staticFS = http.FS(distSubFS)
+			logger.Log.Info("Serving frontend client SPA from embedded single-binary FS")
+		}
+	}
+
+	if staticFS == nil {
+		clientDistDir := filepath.Join(s.storage.BaseDir(), "..", "client", "dist")
+		if _, err := os.Stat(clientDistDir); err == nil {
+			staticFS = http.Dir(clientDistDir)
+			logger.Log.Info("Serving frontend client SPA from local filesystem directory", "path", clientDistDir)
+		}
+	}
+
+	if staticFS != nil {
+		fileServer := http.FileServer(staticFS)
+		s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			path := strings.TrimPrefix(r.URL.Path, "/")
+			if path == "" {
+				path = "index.html"
+			}
+			f, err := staticFS.Open(path)
+			if err == nil {
+				_ = f.Close()
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+			// SPA fallback: return index.html for unknown frontend routes
+			r.URL.Path = "/"
+			fileServer.ServeHTTP(w, r)
+		})
+	}
 }
 
 // Start launches the HTTP server listening on configured address.

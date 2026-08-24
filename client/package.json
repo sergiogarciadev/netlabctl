@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && mkdir -p ../internal/server/dist && cp -r dist/* ../internal/server/dist/",
     "lint": "biome check .",
     "preview": "vite preview"
   },
