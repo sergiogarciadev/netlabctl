@@ -1,5 +1,7 @@
 import {
   Cable,
+  Copy,
+  FolderPlus,
   MousePointer,
   Network,
   Play,
@@ -8,10 +10,17 @@ import {
   RotateCw,
   Square,
   Terminal as TerminalIcon,
+  Trash2,
 } from "lucide-react";
 
 export function Toolbar({
   projectName,
+  projects,
+  currentProjectId,
+  onSwitchProject,
+  onCreateProject,
+  onCloneProject,
+  onDeleteProject,
   isRunning,
   activeTool,
   onSelectTool,
@@ -27,12 +36,76 @@ export function Toolbar({
 }) {
   return (
     <div className="toolbar">
-      <div className="toolbar-brand">
+      <div className="toolbar-brand" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <Network size={22} className="text-blue-500" />
-        <span>netlabctl</span>
-        <span style={{ fontSize: "0.8rem", opacity: 0.6, marginLeft: "6px" }}>
-          / {projectName || "Untitled Lab"}
-        </span>
+        <span style={{ fontWeight: 700 }}>netlabctl</span>
+
+        {/* Multi-Project Lab Switcher & Management */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "10px" }}>
+          <select
+            value={currentProjectId || "default"}
+            onChange={(e) => onSwitchProject(e.target.value)}
+            style={{
+              background: "var(--bg-card)",
+              border: "1px solid var(--border-color)",
+              color: "#38bdf8",
+              borderRadius: "6px",
+              padding: "3px 8px",
+              fontSize: "0.8rem",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            title="Switch Active Lab / Project"
+          >
+            {projects && projects.length > 0 ? (
+              projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  📁 {p.name || p.id}
+                </option>
+              ))
+            ) : (
+              <option value={currentProjectId || "default"}>
+                📁 {projectName || "Untitled Lab"}
+              </option>
+            )}
+          </select>
+
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+            onClick={onCreateProject}
+            title="Create New Lab / Project"
+          >
+            <FolderPlus size={13} /> New
+          </button>
+
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+            onClick={onCloneProject}
+            title="Clone Current Lab"
+          >
+            <Copy size={13} /> Clone
+          </button>
+
+          <button
+            type="button"
+            className="btn"
+            style={{
+              padding: "4px 8px",
+              fontSize: "0.75rem",
+              color: projects?.length <= 1 ? "var(--text-muted)" : "#ef4444",
+              opacity: projects?.length <= 1 ? 0.5 : 1,
+            }}
+            disabled={projects?.length <= 1}
+            onClick={onDeleteProject}
+            title="Delete Current Lab"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>

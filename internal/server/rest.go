@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"netlabctl/internal/logger"
 	"netlabctl/internal/model"
@@ -116,6 +117,74 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(top)
+}
+
+func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Missing project id", http.StatusBadRequest)
+		return
+	}
+
+	// Stop simulation if running
+	s.hub.stopProjectSimulation(id)
+
+	if err := s.storage.DeleteProject(id); err != nil {
+		logger.Log.Error("Failed to delete project", "id", id, "error", err)
+		http.Error(w, "Failed to delete project", http.StatusInternalServerError)
+		return
+	}
+
+	logger.Log.Info("Deleted project", "id", id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleCloneProject(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Missing project id", http.StatusBadRequest)
+		return
+	}
+
+	origTop, err := s.storage.GetProject(id)
+	if err != nil {
+		http.Error(w, "Source project not found", http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	newID := fmt.Sprintf("proj-%d", time.Now().UnixMilli())
+	newName := req.Name
+	if newName == "" {
+		newName = fmt.Sprintf("%s (Copy)", origTop.Name)
+	}
+
+	clonedTop := *origTop
+	clonedTop.ID = newID
+	clonedTop.Name = newName
+	clonedTop.SimulationStatus = "stopped"
+
+	clonedNodes := make([]model.Node, len(origTop.Nodes))
+	copy(clonedNodes, origTop.Nodes)
+	for i := range clonedNodes {
+		clonedNodes[i].Status = "stopped"
+		clonedNodes[i].Power = "off"
+	}
+	clonedTop.Nodes = clonedNodes
+
+	if err := s.storage.SaveProject(&clonedTop); err != nil {
+		logger.Log.Error("Failed to save cloned project", "newID", newID, "error", err)
+		http.Error(w, "Failed to save cloned project", http.StatusInternalServerError)
+		return
+	}
+
+	logger.Log.Info("Cloned project successfully", "origID", id, "newID", newID, "name", newName)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(clonedTop)
 }
 
 type AddNodeRequest struct {

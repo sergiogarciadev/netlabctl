@@ -46,6 +46,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/projects", s.handleCreateProject)
 	s.mux.HandleFunc("GET /api/projects/{id}", s.handleGetProject)
 	s.mux.HandleFunc("PUT /api/projects/{id}", s.handleUpdateProject)
+	s.mux.HandleFunc("DELETE /api/projects/{id}", s.handleDeleteProject)
+	s.mux.HandleFunc("POST /api/projects/{id}/clone", s.handleCloneProject)
 	s.mux.HandleFunc("POST /api/projects/{id}/nodes", s.handleAddNode)
 	s.mux.HandleFunc("POST /api/projects/{id}/start", s.handleStartProjectSimulation)
 	s.mux.HandleFunc("POST /api/projects/{id}/stop", s.handleStopProjectSimulation)

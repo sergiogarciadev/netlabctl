@@ -6,7 +6,11 @@ import { TerminalWindow } from "./components/TerminalWindow";
 import { Toolbar } from "./components/Toolbar";
 import {
   addNodeToProject,
+  cloneProject,
+  createProject,
+  deleteProject,
   fetchProject,
+  fetchProjects,
   fetchTemplates,
   startProjectSimulation,
   stopProjectSimulation,
@@ -119,6 +123,93 @@ export function App() {
   }, [handleUndo, handleRedo]);
 
   const [wireStats, setWireStats] = useState([]);
+  const [projects, setProjects] = useState([]);
+
+  const loadProjectsList = useCallback(async () => {
+    try {
+      const list = await fetchProjects();
+      setProjects(list || []);
+    } catch (err) {
+      console.error("[NETLAB-APP-DEBUG] Failed to load projects list:", err);
+    }
+  }, []);
+
+  const handleSwitchProject = useCallback(
+    async (projectId) => {
+      try {
+        setSelectedNode(null);
+        const top = await fetchProject(projectId);
+        setProject(top);
+        const active =
+          top.simulationStatus === "running" ||
+          top.nodes?.some((n) => n.power === "on" || n.status === "running");
+        setIsRunning(Boolean(active));
+        historyRef.current = [JSON.parse(JSON.stringify(top))];
+        historyIndexRef.current = 0;
+        updateHistoryButtons();
+
+        if (wsClientRef.current) {
+          wsClientRef.current.subscribeProject(projectId);
+        }
+        await loadProjectsList();
+      } catch (err) {
+        console.error("[NETLAB-APP-DEBUG] Failed to switch project:", err);
+      }
+    },
+    [updateHistoryButtons, loadProjectsList],
+  );
+
+  const handleCreateProject = useCallback(async () => {
+    const name = window.prompt("Enter new lab name:", "New Network Lab");
+    if (!name) return;
+    try {
+      const newId = `proj-${Date.now()}`;
+      const newTop = {
+        id: newId,
+        name,
+        nodes: [],
+        wires: [],
+      };
+      await createProject(newTop);
+      await handleSwitchProject(newId);
+    } catch (err) {
+      console.error("[NETLAB-APP-DEBUG] Failed to create project:", err);
+      alert("Failed to create new project.");
+    }
+  }, [handleSwitchProject]);
+
+  const handleCloneProject = useCallback(async () => {
+    const current = projectRef.current;
+    const name = window.prompt("Enter name for cloned lab:", `${current.name} (Copy)`);
+    if (!name) return;
+    try {
+      const cloned = await cloneProject(current.id, name);
+      await handleSwitchProject(cloned.id);
+    } catch (err) {
+      console.error("[NETLAB-APP-DEBUG] Failed to clone project:", err);
+      alert("Failed to clone project.");
+    }
+  }, [handleSwitchProject]);
+
+  const handleDeleteProject = useCallback(async () => {
+    const current = projectRef.current;
+    if (projects.length <= 1) {
+      alert("Cannot delete the only remaining lab project.");
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete lab "${current.name}"?`)) {
+      return;
+    }
+    try {
+      await deleteProject(current.id);
+      const remaining = projects.filter((p) => p.id !== current.id);
+      const nextId = remaining.length > 0 ? remaining[0].id : "default";
+      await handleSwitchProject(nextId);
+    } catch (err) {
+      console.error("[NETLAB-APP-DEBUG] Failed to delete project:", err);
+      alert("Failed to delete project.");
+    }
+  }, [projects, handleSwitchProject]);
 
   useEffect(() => {
     fetchTemplates()
@@ -127,6 +218,8 @@ export function App() {
         setTemplates(tmplList);
       })
       .catch((err) => console.error("[NETLAB-APP-DEBUG] Failed to load templates:", err));
+
+    loadProjectsList();
 
     const updateProjectState = (top) => {
       setProject(top);
@@ -156,6 +249,7 @@ export function App() {
           historyRef.current = [JSON.parse(JSON.stringify(top))];
           historyIndexRef.current = 0;
           updateHistoryButtons();
+          loadProjectsList();
         });
       });
 
@@ -178,7 +272,7 @@ export function App() {
     wsClientRef.current = ws;
 
     return () => ws.disconnect();
-  }, [updateHistoryButtons]);
+  }, [updateHistoryButtons, loadProjectsList]);
 
   const handleStartLab = useCallback(async () => {
     setIsRunning(true);
@@ -335,6 +429,12 @@ export function App() {
     <div className="app-container">
       <Toolbar
         projectName={project.name}
+        projects={projects}
+        currentProjectId={project.id}
+        onSwitchProject={handleSwitchProject}
+        onCreateProject={handleCreateProject}
+        onCloneProject={handleCloneProject}
+        onDeleteProject={handleDeleteProject}
         isRunning={isRunning}
         activeTool={activeTool}
         onSelectTool={(tool) => {

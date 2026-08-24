@@ -44,6 +44,24 @@ export async function updateProject(id, project) {
   return res.json();
 }
 
+export async function cloneProject(id, newName) {
+  const res = await fetch(`/api/projects/${id}/clone`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: newName }),
+  });
+  if (!res.ok) throw new Error("Failed to clone project");
+  return res.json();
+}
+
+export async function deleteProject(id) {
+  const res = await fetch(`/api/projects/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete project");
+  return true;
+}
+
 export async function addNodeToProject(projectId, templateId, name, x, y) {
   const res = await fetch(`/api/projects/${projectId}/nodes`, {
     method: "POST",

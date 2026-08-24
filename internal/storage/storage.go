@@ -311,3 +311,9 @@ func (s *Storage) SaveProject(top *model.Topology) error {
 	topPath := filepath.Join(pDir, "topology.json")
 	return os.WriteFile(topPath, data, 0644)
 }
+
+// DeleteProject removes a project directory and all its files.
+func (s *Storage) DeleteProject(id string) error {
+	pDir := s.ProjectDir(id)
+	return os.RemoveAll(pDir)
+}
