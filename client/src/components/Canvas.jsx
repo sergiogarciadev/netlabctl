@@ -2,10 +2,10 @@ import {
   Circle,
   Canvas as FabricCanvas,
   Group,
-  loadSVGFromString,
   Polyline,
   Rect,
   Shadow,
+  loadSVGFromString,
 } from "fabric";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -217,7 +217,7 @@ export function Canvas({
     const canvas = fabricCanvasRef.current;
     if (!canvas || canvas.isDisposed || !wireStats || wireStats.length === 0) return;
 
-    wireStats.forEach((stat) => {
+    for (const stat of wireStats) {
       // 3-Level Fallback for wire points lookup (Canvas object -> Polyline map -> Synchronous Topology cache)
       const wireLineObj = canvas
         .getObjects()
@@ -229,7 +229,7 @@ export function Canvas({
         wirePointsCacheRef.current.get(stat.wireId);
       if (!points || points.length < 2) {
         console.warn("[NETLAB-ANIM-DEBUG] Wire line points not found for wireId:", stat.wireId);
-        return;
+        continue;
       }
 
       const fwdCount = stat.srcToDst100ms || (stat.count > 0 ? stat.count : 0);
@@ -245,7 +245,7 @@ export function Canvas({
           triggerCircleAnimation(fabricCanvasRef.current, points, revCount, true);
         }, 0);
       }
-    });
+    }
   }, [wireStats, triggerCircleAnimation]);
 
   const cancelWiring = useCallback(() => {
@@ -635,7 +635,7 @@ export function Canvas({
     if (!canvas || canvas.isDisposed) return;
 
     let isCancelled = false;
-    canvas.defaultCursor = activeToolRef.current === "wire" ? "crosshair" : "default";
+    canvas.defaultCursor = activeTool === "wire" ? "crosshair" : "default";
     const nodeGroupsMap = new Map();
 
     const renderAll = async () => {
@@ -663,13 +663,7 @@ export function Canvas({
         const tmpl = templates.find((t) => t.id === node.templateId);
         const svgStr = tmpl ? svgCache.get(tmpl.id) || "" : "";
 
-        const nodeGroup = await createExactSVGDeviceGroup(
-          node,
-          tmpl,
-          svgStr,
-          wires,
-          activeToolRef.current,
-        );
+        const nodeGroup = await createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool);
         if (isCancelled || canvas.isDisposed) return;
 
         nodeGroup.lastValidLeft = node.x;
@@ -1186,7 +1180,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
       }
     }
 
-    nodePorts.forEach((port) => {
+    for (const port of nodePorts) {
       const isMatch =
         elemId === port.id ||
         elemId === `port-${port.name}` ||
@@ -1232,7 +1226,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
           obj.set({ fill: portColor });
         }
       }
-    });
+    }
 
     if (obj._objects && Array.isArray(obj._objects)) {
       obj._objects.forEach(processElement);

@@ -1,18 +1,18 @@
 import { Activity, Bug, ChevronDown, Crosshair, Play, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export function DebugPanel({ debugInfo }) {
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem("netlabctl_debug_hud_collapsed") === "true";
   });
 
-  const toggleCollapse = () => {
+  const toggleCollapse = useCallback(() => {
     setIsCollapsed((prev) => {
       const next = !prev;
       localStorage.setItem("netlabctl_debug_hud_collapsed", String(next));
       return next;
     });
-  };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -24,7 +24,7 @@ export function DebugPanel({ debugInfo }) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [toggleCollapse]);
 
   if (!debugInfo) return null;
 
