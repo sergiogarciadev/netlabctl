@@ -27,7 +27,16 @@ export function App() {
     wires: [],
   });
   const [selectedNode, setSelectedNode] = useState(null);
-  const [activeTerminalNode, setActiveTerminalNode] = useState(null);
+  const [activeTerminalNodes, setActiveTerminalNodes] = useState([]);
+
+  const handleOpenTerminal = useCallback((node) => {
+    setActiveTerminalNodes((prev) => {
+      if (prev.some((n) => n.id === node.id)) {
+        return prev;
+      }
+      return [...prev, node];
+    });
+  }, []);
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [activeTool, setActiveTool] = useState("select");
@@ -451,7 +460,7 @@ export function App() {
         onStop={handleStopLab}
         onAddDevice={() => setIsAddDeviceOpen(true)}
         selectedNode={selectedNode}
-        onOpenTerminal={(node) => setActiveTerminalNode(node)}
+        onOpenTerminal={handleOpenTerminal}
       />
 
       <div className="main-content">
@@ -475,7 +484,7 @@ export function App() {
           templates={templates}
           nodes={project.nodes || []}
           wires={project.wires || []}
-          onOpenTerminal={(node) => setActiveTerminalNode(node)}
+          onOpenTerminal={handleOpenTerminal}
           onUpdateNode={handleUpdateNode}
           onDeleteNode={handleDeleteNode}
           onUpdateWire={handleUpdateWire}
@@ -488,13 +497,34 @@ export function App() {
           onSelectTemplate={handleAddNodeFromTemplate}
         />
 
-        {activeTerminalNode && (
-          <TerminalWindow
-            projectId={project.id}
-            node={activeTerminalNode}
-            onClose={() => setActiveTerminalNode(null)}
-            wsClient={wsClientRef.current}
-          />
+        {activeTerminalNodes.length > 0 && (
+          <div
+            className="terminal-dock-container"
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              width: "100%",
+              display: "flex",
+              alignItems: "flex-end",
+              pointerEvents: "none",
+              zIndex: 30,
+            }}
+          >
+            {activeTerminalNodes.map((node, idx) => (
+              <div key={node.id} style={{ flex: 1, pointerEvents: "auto" }}>
+                <TerminalWindow
+                  projectId={project.id}
+                  node={node}
+                  terminalIndex={idx}
+                  totalTerminals={activeTerminalNodes.length}
+                  onClose={() =>
+                    setActiveTerminalNodes((prev) => prev.filter((n) => n.id !== node.id))
+                  }
+                />
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
