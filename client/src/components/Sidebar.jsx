@@ -143,6 +143,8 @@ export function Sidebar({
               className="btn btn-primary"
               style={{ padding: "4px 8px" }}
               onClick={handleSaveNodeProperties}
+              title="Save Name"
+              aria-label="Save Name"
             >
               <Check size={14} />
             </button>
@@ -170,13 +172,21 @@ export function Sidebar({
               }}
               onClick={() => setIsEditingName(true)}
               title="Rename device"
+              aria-label="Rename device"
             >
               <Edit2 size={14} />
             </button>
           </div>
         )}
 
-        <button type="button" className="btn" style={{ padding: "4px 8px" }} onClick={onClose}>
+        <button
+          type="button"
+          className="btn"
+          style={{ padding: "4px 8px" }}
+          onClick={onClose}
+          title="Close Sidebar"
+          aria-label="Close Sidebar"
+        >
           <X size={16} />
         </button>
       </div>

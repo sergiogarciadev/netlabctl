@@ -155,10 +155,18 @@ export function TerminalWindow({ projectId, node, onClose }) {
             style={{ padding: "2px 6px" }}
             onClick={() => setHeight(height > 450 ? 250 : 520)}
             title="Toggle Expanded Height"
+            aria-label="Toggle Expanded Height"
           >
             {height > 450 ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
-          <button type="button" className="btn" style={{ padding: "2px 6px" }} onClick={onClose}>
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: "2px 6px" }}
+            onClick={onClose}
+            title="Close Terminal Window"
+            aria-label="Close Terminal Window"
+          >
             <X size={14} />
           </button>
         </div>
