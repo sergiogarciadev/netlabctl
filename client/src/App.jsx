@@ -31,7 +31,9 @@ export function App() {
   // Stable ref for project state — allows useCallback handlers to always
   // read the latest project without needing project in their dependency arrays.
   const projectRef = useRef(project);
-  useEffect(() => { projectRef.current = project; }, [project]);
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
 
   // History State Stack for Undo / Redo
   const historyRef = useRef([]);
@@ -193,114 +195,132 @@ export function App() {
     wsClientRef.current?.stopSimulation(projectRef.current.id);
   }, []);
 
-  const handleAddNodeFromTemplate = useCallback(async (tmpl) => {
-    try {
+  const handleAddNodeFromTemplate = useCallback(
+    async (tmpl) => {
+      try {
+        const proj = projectRef.current;
+        const count = proj.nodes?.length || 0;
+        const posX = 100 + (count % 3) * 240;
+        const posY = 120 + Math.floor(count / 3) * 200;
+        console.log("[NETLAB-APP-DEBUG] Adding node from template:", tmpl.id, { posX, posY });
+        const newNode = await addNodeToProject(proj.id, tmpl.id, "", posX, posY);
+        const updatedNodes = [...(proj.nodes || []), newNode];
+        const updatedProject = { ...proj, nodes: updatedNodes };
+
+        commitProjectUpdate(updatedProject, true);
+        setSelectedNode(newNode);
+      } catch (err) {
+        console.error("[NETLAB-APP-DEBUG] Failed to add node from template:", err);
+      }
+    },
+    [commitProjectUpdate],
+  );
+
+  const handleAddWire = useCallback(
+    async (srcNodeId, srcPortId, dstNodeId, dstPortId) => {
       const proj = projectRef.current;
-      const count = proj.nodes?.length || 0;
-      const posX = 100 + (count % 3) * 240;
-      const posY = 120 + Math.floor(count / 3) * 200;
-      console.log("[NETLAB-APP-DEBUG] Adding node from template:", tmpl.id, { posX, posY });
-      const newNode = await addNodeToProject(proj.id, tmpl.id, "", posX, posY);
-      const updatedNodes = [...(proj.nodes || []), newNode];
-      const updatedProject = { ...proj, nodes: updatedNodes };
+      console.log("[NETLAB-APP-DEBUG] Requesting wire creation:", {
+        srcNodeId,
+        srcPortId,
+        dstNodeId,
+        dstPortId,
+        currentWires: proj.wires,
+      });
 
+      const isPortConnected = (nodeId, portId) => {
+        return (proj.wires || []).some(
+          (w) =>
+            (w.srcNodeId === nodeId && w.srcPortId === portId) ||
+            (w.dstNodeId === nodeId && w.dstPortId === portId),
+        );
+      };
+
+      if (isPortConnected(srcNodeId, srcPortId)) {
+        console.warn("[NETLAB-APP-DEBUG] Rejected: Source port already connected.");
+        alert(`Port ${srcPortId} on device ${srcNodeId} is already connected to a wire!`);
+        return;
+      }
+      if (isPortConnected(dstNodeId, dstPortId)) {
+        console.warn("[NETLAB-APP-DEBUG] Rejected: Destination port already connected.");
+        alert(`Port ${dstPortId} on device ${dstNodeId} is already connected to a wire!`);
+        return;
+      }
+
+      const newWire = {
+        id: `wire-${Date.now()}`,
+        srcNodeId,
+        srcPortId,
+        dstNodeId,
+        dstPortId,
+      };
+
+      const updatedWires = [...(proj.wires || []), newWire];
+      const updatedProject = { ...proj, wires: updatedWires };
+      console.log("[NETLAB-APP-DEBUG] Wire created successfully:", newWire);
       commitProjectUpdate(updatedProject, true);
-      setSelectedNode(newNode);
-    } catch (err) {
-      console.error("[NETLAB-APP-DEBUG] Failed to add node from template:", err);
-    }
-  }, [commitProjectUpdate]);
+    },
+    [commitProjectUpdate],
+  );
 
-  const handleAddWire = useCallback(async (srcNodeId, srcPortId, dstNodeId, dstPortId) => {
-    const proj = projectRef.current;
-    console.log("[NETLAB-APP-DEBUG] Requesting wire creation:", {
-      srcNodeId,
-      srcPortId,
-      dstNodeId,
-      dstPortId,
-      currentWires: proj.wires,
-    });
+  const handleDeleteWire = useCallback(
+    async (wireId) => {
+      const proj = projectRef.current;
+      console.log("[NETLAB-APP-DEBUG] Deleting wire:", wireId);
+      const updatedWires = (proj.wires || []).filter((w) => w.id !== wireId);
+      const updatedProject = { ...proj, wires: updatedWires };
+      commitProjectUpdate(updatedProject, true);
+    },
+    [commitProjectUpdate],
+  );
 
-    const isPortConnected = (nodeId, portId) => {
-      return (proj.wires || []).some(
-        (w) =>
-          (w.srcNodeId === nodeId && w.srcPortId === portId) ||
-          (w.dstNodeId === nodeId && w.dstPortId === portId),
+  const handleUpdateWire = useCallback(
+    async (updatedWire) => {
+      const proj = projectRef.current;
+      console.log("[NETLAB-APP-DEBUG] Updating wire:", updatedWire);
+      const updatedWires = (proj.wires || []).map((w) =>
+        w.id === updatedWire.id ? updatedWire : w,
       );
-    };
+      const updatedProject = { ...proj, wires: updatedWires };
+      commitProjectUpdate(updatedProject, true);
 
-    if (isPortConnected(srcNodeId, srcPortId)) {
-      console.warn("[NETLAB-APP-DEBUG] Rejected: Source port already connected.");
-      alert(`Port ${srcPortId} on device ${srcNodeId} is already connected to a wire!`);
-      return;
-    }
-    if (isPortConnected(dstNodeId, dstPortId)) {
-      console.warn("[NETLAB-APP-DEBUG] Rejected: Destination port already connected.");
-      alert(`Port ${dstPortId} on device ${dstNodeId} is already connected to a wire!`);
-      return;
-    }
+      if (updatedWire.conditions) {
+        wsClientRef.current?.setWireCondition(updatedWire.id, updatedWire.conditions);
+      }
+      if (updatedWire.tzspTarget !== undefined) {
+        wsClientRef.current?.enableTZSP(updatedWire.id, updatedWire.tzspTarget);
+      }
+    },
+    [commitProjectUpdate],
+  );
 
-    const newWire = {
-      id: `wire-${Date.now()}`,
-      srcNodeId,
-      srcPortId,
-      dstNodeId,
-      dstPortId,
-    };
+  const handleUpdateNode = useCallback(
+    async (updatedNode) => {
+      const proj = projectRef.current;
+      console.log("[NETLAB-APP-DEBUG] Updating node:", updatedNode);
+      const updatedNodes = (proj.nodes || []).map((n) =>
+        n.id === updatedNode.id ? updatedNode : n,
+      );
+      const updatedProject = { ...proj, nodes: updatedNodes };
+      setSelectedNode(updatedNode);
+      commitProjectUpdate(updatedProject, true);
+    },
+    [commitProjectUpdate],
+  );
 
-    const updatedWires = [...(proj.wires || []), newWire];
-    const updatedProject = { ...proj, wires: updatedWires };
-    console.log("[NETLAB-APP-DEBUG] Wire created successfully:", newWire);
-    commitProjectUpdate(updatedProject, true);
-  }, [commitProjectUpdate]);
-
-  const handleDeleteWire = useCallback(async (wireId) => {
-    const proj = projectRef.current;
-    console.log("[NETLAB-APP-DEBUG] Deleting wire:", wireId);
-    const updatedWires = (proj.wires || []).filter((w) => w.id !== wireId);
-    const updatedProject = { ...proj, wires: updatedWires };
-    commitProjectUpdate(updatedProject, true);
-  }, [commitProjectUpdate]);
-
-  const handleUpdateWire = useCallback(async (updatedWire) => {
-    const proj = projectRef.current;
-    console.log("[NETLAB-APP-DEBUG] Updating wire:", updatedWire);
-    const updatedWires = (proj.wires || []).map((w) =>
-      w.id === updatedWire.id ? updatedWire : w,
-    );
-    const updatedProject = { ...proj, wires: updatedWires };
-    commitProjectUpdate(updatedProject, true);
-
-    if (updatedWire.conditions) {
-      wsClientRef.current?.setWireCondition(updatedWire.id, updatedWire.conditions);
-    }
-    if (updatedWire.tzspTarget !== undefined) {
-      wsClientRef.current?.enableTZSP(updatedWire.id, updatedWire.tzspTarget);
-    }
-  }, [commitProjectUpdate]);
-
-  const handleUpdateNode = useCallback(async (updatedNode) => {
-    const proj = projectRef.current;
-    console.log("[NETLAB-APP-DEBUG] Updating node:", updatedNode);
-    const updatedNodes = (proj.nodes || []).map((n) =>
-      n.id === updatedNode.id ? updatedNode : n,
-    );
-    const updatedProject = { ...proj, nodes: updatedNodes };
-    setSelectedNode(updatedNode);
-    commitProjectUpdate(updatedProject, true);
-  }, [commitProjectUpdate]);
-
-  const handleDeleteNode = useCallback(async (nodeId) => {
-    const proj = projectRef.current;
-    console.log("[NETLAB-APP-DEBUG] Deleting node:", nodeId);
-    const updatedNodes = (proj.nodes || []).filter((n) => n.id !== nodeId);
-    const updatedWires = (proj.wires || []).filter(
-      (w) => w.srcNodeId !== nodeId && w.dstNodeId !== nodeId,
-    );
-    const updatedProject = { ...proj, nodes: updatedNodes, wires: updatedWires };
-    setSelectedNode(null);
-    commitProjectUpdate(updatedProject, true);
-  }, [commitProjectUpdate]);
+  const handleDeleteNode = useCallback(
+    async (nodeId) => {
+      const proj = projectRef.current;
+      console.log("[NETLAB-APP-DEBUG] Deleting node:", nodeId);
+      const updatedNodes = (proj.nodes || []).filter((n) => n.id !== nodeId);
+      const updatedWires = (proj.wires || []).filter(
+        (w) => w.srcNodeId !== nodeId && w.dstNodeId !== nodeId,
+      );
+      const updatedProject = { ...proj, nodes: updatedNodes, wires: updatedWires };
+      setSelectedNode(null);
+      commitProjectUpdate(updatedProject, true);
+    },
+    [commitProjectUpdate],
+  );
 
   const handleSelectNode = useCallback((node) => {
     setSelectedNode(node);
@@ -338,6 +358,7 @@ export function App() {
           onAddWire={handleAddWire}
           onDeleteWire={handleDeleteWire}
           onDeleteNode={handleDeleteNode}
+          onUpdateNode={handleUpdateNode}
         />
 
         <Sidebar

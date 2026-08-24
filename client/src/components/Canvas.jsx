@@ -54,11 +54,21 @@ export function Canvas({
   const onDeleteWireRef = useRef(onDeleteWire);
   const onDeleteNodeRef = useRef(onDeleteNode);
 
-  useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
-  useEffect(() => { onSelectNodeRef.current = onSelectNode; }, [onSelectNode]);
-  useEffect(() => { onAddWireRef.current = onAddWire; }, [onAddWire]);
-  useEffect(() => { onDeleteWireRef.current = onDeleteWire; }, [onDeleteWire]);
-  useEffect(() => { onDeleteNodeRef.current = onDeleteNode; }, [onDeleteNode]);
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
+  useEffect(() => {
+    onSelectNodeRef.current = onSelectNode;
+  }, [onSelectNode]);
+  useEffect(() => {
+    onAddWireRef.current = onAddWire;
+  }, [onAddWire]);
+  useEffect(() => {
+    onDeleteWireRef.current = onDeleteWire;
+  }, [onDeleteWire]);
+  useEffect(() => {
+    onDeleteNodeRef.current = onDeleteNode;
+  }, [onDeleteNode]);
 
   // Isolated local debug info state
   const [debugInfo, setDebugInfo] = useState(null);
@@ -532,7 +542,11 @@ export function Canvas({
         const portAbsPos = nearPort.absPos;
         const node = targetNodeGroup.nodeData;
 
-        if (activeToolRef.current === "wire" || subTarget?.portId || wiringStateRef.current.active) {
+        if (
+          activeToolRef.current === "wire" ||
+          subTarget?.portId ||
+          wiringStateRef.current.active
+        ) {
           opt.e.stopPropagation();
 
           if (!wiringStateRef.current.active) {
@@ -607,7 +621,7 @@ export function Canvas({
         fabricCanvasRef.current.dispose();
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cancelWiring, handleTestPulseWire]);
 
   // Sync Nodes and Wires on Canvas - Preserves existing Zoom & Pan ViewportTransform!
@@ -644,7 +658,13 @@ export function Canvas({
         const tmpl = templates.find((t) => t.id === node.templateId);
         const svgStr = tmpl ? svgCache.get(tmpl.id) || "" : "";
 
-        const nodeGroup = await createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeToolRef.current);
+        const nodeGroup = await createExactSVGDeviceGroup(
+          node,
+          tmpl,
+          svgStr,
+          wires,
+          activeToolRef.current,
+        );
         if (isCancelled || canvas.isDisposed) return;
 
         nodeGroup.lastValidLeft = node.x;
@@ -672,11 +692,25 @@ export function Canvas({
           );
         });
 
+        // Persist final position to React state + backend after drag ends
+        nodeGroup.on("modified", () => {
+          if (onUpdateNodeRef.current) {
+            onUpdateNodeRef.current({ ...node, x: nodeGroup.left, y: nodeGroup.top });
+          }
+        });
+
         canvas.add(nodeGroup);
         nodeGroupsMap.set(node.id, nodeGroup);
       }
 
-      updateWirePositions(canvas, nodes, wires, nodeGroupsMap, onDeleteWireRef.current, wirePolylineMapRef);
+      updateWirePositions(
+        canvas,
+        nodes,
+        wires,
+        nodeGroupsMap,
+        onDeleteWireRef.current,
+        wirePolylineMapRef,
+      );
       if (!isCancelled && !canvas.isDisposed) {
         canvas.requestRenderAll();
       }
