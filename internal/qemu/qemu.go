@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -168,6 +169,14 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		logger.Log.Info("KVM hardware acceleration not available (/dev/kvm), using TCG software emulation", "nodeID", node.ID)
 	}
 
+	// Generate Cloud-Init NoCloud ISO if Userdata or Metadata is provided
+	isoPath, err := m.createCloudInitISO(nDir, node, tmpl)
+	if err != nil {
+		logger.Log.Warn("Failed to create NoCloud cloud-init ISO", "nodeID", node.ID, "error", err)
+	} else if isoPath != "" {
+		args = append(args, "-drive", fmt.Sprintf("file=%s,format=raw,media=cdrom,readonly=on", isoPath))
+	}
+
 	// Add managed port netdev sockets for ALL node ports
 	for i, port := range node.Ports {
 		portKey := fmt.Sprintf("%s:%s", node.ID, port.ID)
@@ -322,4 +331,82 @@ func isKVMAvailable() bool {
 	}
 	_ = f.Close()
 	return true
+}
+
+func renderCloudInitTemplate(tmplStr string, node *model.Node) string {
+	if node == nil {
+		return tmplStr
+	}
+	res := strings.ReplaceAll(tmplStr, "${node.id}", node.ID)
+	res = strings.ReplaceAll(res, "${node.name}", node.Name)
+	res = strings.ReplaceAll(res, "${{{ node.id }}}", node.ID)
+	res = strings.ReplaceAll(res, "${{{ node.name }}}", node.Name)
+	return res
+}
+
+func (m *Manager) createCloudInitISO(nDir string, node *model.Node, tmpl *model.MachineTemplate) (string, error) {
+	if node == nil {
+		return "", nil
+	}
+	userdata := node.Userdata
+	if userdata == "" && tmpl != nil {
+		userdata = tmpl.Userdata
+	}
+	metadata := node.Metadata
+	if metadata == "" && tmpl != nil {
+		metadata = tmpl.Metadata
+	}
+
+	if userdata == "" && metadata == "" {
+		return "", nil
+	}
+
+	if metadata == "" {
+		hostName := node.Name
+		if hostName == "" {
+			hostName = node.ID
+		}
+		metadata = fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", node.ID, hostName)
+	}
+
+	userdata = renderCloudInitTemplate(userdata, node)
+	metadata = renderCloudInitTemplate(metadata, node)
+
+	tmpDir, err := os.MkdirTemp("", "cidata-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	userDataPath := filepath.Join(tmpDir, "user-data")
+	metaDataPath := filepath.Join(tmpDir, "meta-data")
+
+	if err := os.WriteFile(userDataPath, []byte(userdata), 0644); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(metaDataPath, []byte(metadata), 0644); err != nil {
+		return "", err
+	}
+
+	isoPath := filepath.Join(nDir, "cidata.iso")
+
+	var cmd *exec.Cmd
+	if _, err := exec.LookPath("genisoimage"); err == nil {
+		cmd = exec.Command("genisoimage", "-output", isoPath, "-volid", "cidata", "-joliet", "-rock", tmpDir)
+	} else if _, err := exec.LookPath("mkisofs"); err == nil {
+		cmd = exec.Command("mkisofs", "-output", isoPath, "-volid", "cidata", "-joliet", "-rock", tmpDir)
+	} else if _, err := exec.LookPath("xorriso"); err == nil {
+		cmd = exec.Command("xorriso", "-as", "mkisofs", "-output", isoPath, "-volid", "cidata", "-joliet", "-rock", tmpDir)
+	} else {
+		logger.Log.Warn("No ISO generation tool (genisoimage/mkisofs/xorriso) found to build NoCloud cloud-init ISO", "nodeID", node.ID)
+		return "", nil
+	}
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate cidata.iso: %w (output: %s)", err, string(out))
+	}
+
+	logger.Log.Info("Generated NoCloud cloud-init cidata.iso", "nodeID", node.ID, "isoPath", isoPath)
+	return isoPath, nil
 }
