@@ -497,35 +497,67 @@ export function App() {
           onSelectTemplate={handleAddNodeFromTemplate}
         />
 
-        {activeTerminalNodes.length > 0 && (
-          <div
-            className="terminal-dock-container"
-            style={{
-              position: "absolute",
-              bottom: 0,
-              left: 0,
-              width: "100%",
-              display: "flex",
-              alignItems: "flex-end",
-              pointerEvents: "none",
-              zIndex: 30,
-            }}
-          >
-            {activeTerminalNodes.map((node, idx) => (
-              <div key={node.id} style={{ flex: 1, pointerEvents: "auto" }}>
-                <TerminalWindow
-                  projectId={project.id}
-                  node={node}
-                  terminalIndex={idx}
-                  totalTerminals={activeTerminalNodes.length}
-                  onClose={() =>
-                    setActiveTerminalNodes((prev) => prev.filter((n) => n.id !== node.id))
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        )}
+        {activeTerminalNodes.length > 0 &&
+          (() => {
+            const isNodeDetached = (nodeId) => {
+              try {
+                const saved = localStorage.getItem(`netlab_terminal_${nodeId}`);
+                if (saved) return Boolean(JSON.parse(saved).isDetached);
+              } catch (err) {
+                // ignore
+              }
+              return false;
+            };
+
+            const dockedNodes = activeTerminalNodes.filter((n) => !isNodeDetached(n.id));
+            const detachedNodes = activeTerminalNodes.filter((n) => isNodeDetached(n.id));
+
+            return (
+              <>
+                {dockedNodes.length > 0 && (
+                  <div
+                    className="terminal-dock-container"
+                    style={{
+                      position: "absolute",
+                      bottom: 0,
+                      left: 0,
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "flex-end",
+                      zIndex: 30,
+                    }}
+                  >
+                    {dockedNodes.map((node, idx) => (
+                      <div key={node.id} style={{ flex: 1, minWidth: 0 }}>
+                        <TerminalWindow
+                          projectId={project.id}
+                          node={node}
+                          terminalIndex={idx}
+                          totalTerminals={dockedNodes.length}
+                          onClose={() =>
+                            setActiveTerminalNodes((prev) => prev.filter((n) => n.id !== node.id))
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {detachedNodes.map((node, idx) => (
+                  <TerminalWindow
+                    key={node.id}
+                    projectId={project.id}
+                    node={node}
+                    terminalIndex={dockedNodes.length + idx}
+                    totalTerminals={activeTerminalNodes.length}
+                    onClose={() =>
+                      setActiveTerminalNodes((prev) => prev.filter((n) => n.id !== node.id))
+                    }
+                  />
+                ))}
+              </>
+            );
+          })()}
       </div>
     </div>
   );

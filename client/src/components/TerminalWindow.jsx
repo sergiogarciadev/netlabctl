@@ -187,6 +187,8 @@ export function TerminalWindow({
       fontFamily: 'Consolas, Monaco, "Courier New", monospace',
       fontSize: 13,
       cursorBlink: true,
+      allowProposedApi: true,
+      convertEol: true,
     });
 
     const fitAddon = new FitAddon();
@@ -203,8 +205,15 @@ export function TerminalWindow({
 
     const socket = new WebSocket(wsUrl);
 
+    const sendSizeReport = (rows, cols) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(`\x1b[8;${rows};${cols}t`);
+      }
+    };
+
     socket.onopen = () => {
       term.writeln(`\x1b[1;32mConnected to serial console for ${node.name}...\x1b[0m\r\n`);
+      sendSizeReport(term.rows, term.cols);
     };
 
     socket.onmessage = (event) => {
@@ -219,6 +228,18 @@ export function TerminalWindow({
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(data);
       }
+    });
+
+    term.onResize(({ cols, rows }) => {
+      sendSizeReport(rows, cols);
+    });
+
+    term.parser.registerCsiHandler({ final: "t" }, (params) => {
+      if (params[0] === 18) {
+        sendSizeReport(term.rows, term.cols);
+        return true;
+      }
+      return false;
     });
 
     const handleResize = () => fitAddon.fit();
@@ -253,11 +274,11 @@ export function TerminalWindow({
 
   const dockedStyle = {
     position: "relative",
-    width: totalTerminals > 1 ? `calc(100% / ${totalTerminals} - 4px)` : "100%",
+    width: "100%",
     height: `${layout.height}px`,
     background: "#090d16",
     borderTop: "1px solid var(--border-color)",
-    borderRight: totalTerminals > 1 ? "1px solid var(--border-color)" : "none",
+    borderRight: "1px solid var(--border-color)",
     display: "flex",
     flexDirection: "column",
     zIndex: 30,
