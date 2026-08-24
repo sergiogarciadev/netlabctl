@@ -180,13 +180,21 @@ func (s *Storage) ListTemplates() ([]model.MachineTemplate, error) {
 
 // GetTemplate loads a single template and returns the template struct and its directory path.
 func (s *Storage) GetTemplate(id string) (*model.MachineTemplate, string, error) {
-	tmplDir := filepath.Join(s.DevicesDir(), id)
+	devicesDir := filepath.Clean(s.DevicesDir())
+	cleanedID := filepath.Clean(id)
+	tmplDir := filepath.Join(devicesDir, cleanedID)
+
+	rel, err := filepath.Rel(devicesDir, tmplDir)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return nil, "", fmt.Errorf("invalid template id: %s", id)
+	}
+
 	if _, err := os.Stat(tmplDir); os.IsNotExist(err) {
 		// Try case-insensitive search for directory name
-		entries, _ := os.ReadDir(s.DevicesDir())
+		entries, _ := os.ReadDir(devicesDir)
 		for _, entry := range entries {
-			if entry.IsDir() && strings.EqualFold(entry.Name(), id) {
-				tmplDir = filepath.Join(s.DevicesDir(), entry.Name())
+			if entry.IsDir() && strings.EqualFold(entry.Name(), cleanedID) {
+				tmplDir = filepath.Join(devicesDir, entry.Name())
 				break
 			}
 		}
