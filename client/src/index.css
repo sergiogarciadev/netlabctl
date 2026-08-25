@@ -205,8 +205,20 @@ html,
 
 .terminal-body {
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
   padding: 8px;
   background: #000000;
+  position: relative;
+}
+
+.terminal-body .xterm {
+  height: 100% !important;
+  width: 100% !important;
+}
+
+.terminal-body .xterm-viewport {
+  overflow-y: auto !important;
 }
 
 /* Status & Port Required CSS Classes */

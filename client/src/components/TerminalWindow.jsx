@@ -102,9 +102,6 @@ export function TerminalWindow({
         Math.min(window.innerHeight - 80, resizeStartPosRef.current.h + dy),
       );
       setLayout((prev) => ({ ...prev, width: newW, height: newH }));
-      if (fitAddonRef.current) {
-        fitAddonRef.current.fit();
-      }
     }
   }, []);
 
@@ -125,10 +122,6 @@ export function TerminalWindow({
         }
         return current;
       });
-
-      if (fitAddonRef.current) {
-        fitAddonRef.current.fit();
-      }
     }
   }, [handleWindowMouseMove, node.id]);
 
@@ -251,7 +244,24 @@ export function TerminalWindow({
     const handleResize = () => fitAddon.fit();
     window.addEventListener("resize", handleResize);
 
+    const resizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(() => {
+        if (fitAddonRef.current) {
+          try {
+            fitAddonRef.current.fit();
+          } catch (err) {
+            // ignore fit errors during disposal
+          }
+        }
+      });
+    });
+
+    if (terminalRef.current) {
+      resizeObserver.observe(terminalRef.current);
+    }
+
     return () => {
+      resizeObserver.disconnect();
       window.removeEventListener("resize", handleResize);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
