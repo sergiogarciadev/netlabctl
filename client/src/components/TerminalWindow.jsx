@@ -196,8 +196,16 @@ export function TerminalWindow({
     fitAddonRef.current = fitAddon;
 
     term.open(terminalRef.current);
-    fitAddon.fit();
-    setTermDimensions({ rows: term.rows, cols: term.cols });
+    requestAnimationFrame(() => {
+      if (fitAddonRef.current && term.element) {
+        try {
+          fitAddonRef.current.fit();
+          setTermDimensions({ rows: term.rows, cols: term.cols });
+        } catch (err) {
+          // ignore renderer init race condition
+        }
+      }
+    });
 
     const host =
       window.location.port === "3000" ? `${window.location.hostname}:8080` : window.location.host;
