@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"netlabctl/internal/logger"
 	"netlabctl/internal/model"
@@ -15,7 +16,24 @@ import (
 
 // Storage handles local persistence under $HOME/.netlabctl.
 type Storage struct {
-	baseDir string
+	baseDir      string
+	projectLocks map[string]*sync.RWMutex
+	locksMu      sync.Mutex
+}
+
+func (s *Storage) getProjectLock(id string) *sync.RWMutex {
+	s.locksMu.Lock()
+	defer s.locksMu.Unlock()
+
+	if s.projectLocks == nil {
+		s.projectLocks = make(map[string]*sync.RWMutex)
+	}
+	lock, exists := s.projectLocks[id]
+	if !exists {
+		lock = &sync.RWMutex{}
+		s.projectLocks[id] = lock
+	}
+	return lock
 }
 
 // NewStorage initializes storage using custom path or $HOME/.netlabctl.
@@ -42,7 +60,10 @@ func NewStorage(customDir string) (*Storage, error) {
 		return nil, fmt.Errorf("failed to create projects dir: %w", err)
 	}
 
-	s := &Storage{baseDir: dir}
+	s := &Storage{
+		baseDir:      dir,
+		projectLocks: make(map[string]*sync.RWMutex),
+	}
 	s.ensureDefaultTemplates()
 	return s, nil
 }
@@ -292,6 +313,10 @@ func (s *Storage) ListProjects() ([]model.Topology, error) {
 
 // GetProject loads a project's topology.json.
 func (s *Storage) GetProject(id string) (*model.Topology, error) {
+	lock := s.getProjectLock(id)
+	lock.RLock()
+	defer lock.RUnlock()
+
 	topPath := filepath.Join(s.ProjectDir(id), "topology.json")
 	data, err := os.ReadFile(topPath)
 	if err != nil {
@@ -305,7 +330,7 @@ func (s *Storage) GetProject(id string) (*model.Topology, error) {
 
 	if model.SanitizeTopologyNodeIDs(&top) {
 		logger.Log.Warn("Repaired duplicate node IDs in topology", "projectID", id)
-		_ = s.SaveProject(&top)
+		_ = s.saveProjectInternal(&top)
 	}
 
 	return &top, nil
@@ -313,6 +338,17 @@ func (s *Storage) GetProject(id string) (*model.Topology, error) {
 
 // SaveProject writes a project's topology.json.
 func (s *Storage) SaveProject(top *model.Topology) error {
+	if top == nil {
+		return fmt.Errorf("topology cannot be nil")
+	}
+	lock := s.getProjectLock(top.ID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	return s.saveProjectInternal(top)
+}
+
+func (s *Storage) saveProjectInternal(top *model.Topology) error {
 	if top != nil {
 		_ = model.SanitizeTopologyNodeIDs(top)
 	}
@@ -332,6 +368,10 @@ func (s *Storage) SaveProject(top *model.Topology) error {
 
 // DeleteProject removes a project directory and all its files.
 func (s *Storage) DeleteProject(id string) error {
+	lock := s.getProjectLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+
 	pDir := s.ProjectDir(id)
 	return os.RemoveAll(pDir)
 }

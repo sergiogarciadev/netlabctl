@@ -4,8 +4,10 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"netlabctl/internal/model"
@@ -129,4 +131,42 @@ func TestImportTemplateZip(t *testing.T) {
 	if !found {
 		t.Fatalf("Expected imported template Cisco-Custom in template list")
 	}
+}
+
+func TestConcurrentProjectAccess(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "netlabctl_concurrent_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	s, err := NewStorage(tempDir)
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
+
+	top := &model.Topology{
+		ID:   "concurrent-proj",
+		Name: "Concurrent Test Project",
+	}
+	if err := s.SaveProject(top); err != nil {
+		t.Fatalf("Initial SaveProject failed: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(2)
+		go func(idx int) {
+			defer wg.Done()
+			_, _ = s.GetProject("concurrent-proj")
+		}(i)
+		go func(idx int) {
+			defer wg.Done()
+			_ = s.SaveProject(&model.Topology{
+				ID:   "concurrent-proj",
+				Name: fmt.Sprintf("Concurrent Test Project %d", idx),
+			})
+		}(i)
+	}
+	wg.Wait()
 }
