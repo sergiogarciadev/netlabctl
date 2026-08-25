@@ -403,6 +403,20 @@ func (m *Manager) GetSerialSocketPath(projectID, nodeID string) string {
 	return filepath.Join(m.NodeDir(projectID, nodeID), "serial.sock")
 }
 
+// RemoveNodeDir stops QEMU if running and deletes the node's working directory from disk.
+func (m *Manager) RemoveNodeDir(projectID, nodeID string) error {
+	_ = m.StopNode(nodeID)
+	dir := m.NodeDir(projectID, nodeID)
+	if dir != "" {
+		if err := os.RemoveAll(dir); err != nil {
+			logger.Log.Error("Failed to remove node directory", "nodeID", nodeID, "dir", dir, "error", err)
+			return err
+		}
+		logger.Log.Info("Removed node directory", "nodeID", nodeID, "dir", dir)
+	}
+	return nil
+}
+
 // IsNodeRunning checks if a QEMU node process is active.
 func (m *Manager) IsNodeRunning(nodeID string) bool {
 	m.mu.Lock()

@@ -10,6 +10,7 @@ import {
   addNodeToProject,
   cloneProject,
   createProject,
+  deleteNodeFromProject,
   deleteProject,
   fetchProject,
   fetchProjects,
@@ -542,13 +543,19 @@ export function App() {
   const handleDeleteNode = useCallback(
     async (nodeId) => {
       const proj = projectRef.current;
-      console.log("[NETLAB-APP-DEBUG] Deleting node:", nodeId);
+      console.log("[NETLAB-APP-DEBUG] Deleting node and its directory:", nodeId);
+      try {
+        await deleteNodeFromProject(proj.id, nodeId);
+      } catch (err) {
+        console.warn("[NETLAB-APP-DEBUG] Failed to delete node directory via REST:", err);
+      }
       const updatedNodes = (proj.nodes || []).filter((n) => n.id !== nodeId);
       const updatedWires = (proj.wires || []).filter(
         (w) => w.srcNodeId !== nodeId && w.dstNodeId !== nodeId,
       );
       const updatedProject = { ...proj, nodes: updatedNodes, wires: updatedWires };
       setSelectedNode(null);
+      setActiveTerminalNodes((prev) => prev.filter((n) => n.id !== nodeId));
       commitProjectUpdate(updatedProject, true);
     },
     [commitProjectUpdate],

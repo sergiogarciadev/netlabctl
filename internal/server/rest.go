@@ -103,6 +103,22 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	top.ID = id
+
+	// Clean up directories for nodes that were removed in this topology update
+	if oldTop, err := s.storage.GetProject(id); err == nil {
+		newNodeIDs := make(map[string]bool)
+		for _, n := range top.Nodes {
+			newNodeIDs[n.ID] = true
+		}
+		for _, oldNode := range oldTop.Nodes {
+			if !newNodeIDs[oldNode.ID] {
+				logger.Log.Info("Removing directory for removed node", "projectID", id, "nodeID", oldNode.ID)
+				_ = s.qemuMgr.RemoveNodeDir(id, oldNode.ID)
+				s.serialHubs.RemoveHub(id, oldNode.ID)
+			}
+		}
+	}
+
 	if err := s.storage.SaveProject(&top); err != nil {
 		logger.Log.Error("Failed to update project", "id", id, "error", err)
 		http.Error(w, "Failed to update project", http.StatusInternalServerError)
@@ -117,6 +133,43 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(top)
+}
+
+func (s *Server) handleDeleteSingleNode(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	nodeID := r.PathValue("nodeId")
+	if projectID == "" || nodeID == "" {
+		http.Error(w, "Missing project or node id", http.StatusBadRequest)
+		return
+	}
+
+	_ = s.qemuMgr.RemoveNodeDir(projectID, nodeID)
+	s.serialHubs.RemoveHub(projectID, nodeID)
+
+	top, err := s.storage.GetProject(projectID)
+	if err == nil {
+		filteredNodes := make([]model.Node, 0, len(top.Nodes))
+		for _, n := range top.Nodes {
+			if n.ID != nodeID {
+				filteredNodes = append(filteredNodes, n)
+			}
+		}
+		top.Nodes = filteredNodes
+
+		filteredWires := make([]model.Wire, 0, len(top.Wires))
+		for _, w := range top.Wires {
+			if w.SrcNodeID != nodeID && w.DstNodeID != nodeID {
+				filteredWires = append(filteredWires, w)
+			}
+		}
+		top.Wires = filteredWires
+
+		_ = s.storage.SaveProject(top)
+		s.hub.SyncTopologyNetworkAndMonitors(top)
+		s.hub.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {

@@ -65,6 +65,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/projects/{id}/nodes/{nodeId}/reset", s.handleResetSingleNode)
 	s.mux.HandleFunc("POST /api/projects/{id}/nodes/{nodeId}/stop", s.handleStopSingleNode)
 	s.mux.HandleFunc("POST /api/projects/{id}/nodes/{nodeId}/recreate-disk", s.handleRecreateSingleNodeDisk)
+	s.mux.HandleFunc("DELETE /api/projects/{id}/nodes/{nodeId}", s.handleDeleteSingleNode)
 
 	// WebSocket Endpoints
 	s.mux.HandleFunc("/ws", s.handleWS)

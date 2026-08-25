@@ -128,6 +128,13 @@ export async function recreateNodeDisk(projectId, nodeId) {
   return res.json();
 }
 
+export async function deleteNodeFromProject(projectId, nodeId) {
+  const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(`Failed to delete node ${nodeId}`);
+}
+
 export class WSClient {
   constructor(onMessage) {
     this.onMessage = onMessage;

@@ -65,6 +65,40 @@ func (m *SerialHubManager) GetHub(projectID, nodeID, sockPath string) *NodeSeria
 	return hub
 }
 
+func (m *SerialHubManager) RemoveHub(projectID, nodeID string) {
+	m.mu.Lock()
+	key := projectID + ":" + nodeID
+	hub, exists := m.hubs[key]
+	if exists {
+		delete(m.hubs, key)
+	}
+	m.mu.Unlock()
+
+	if exists && hub != nil {
+		hub.Close()
+	}
+}
+
+func (h *NodeSerialHub) Close() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.isRunning {
+		h.isRunning = false
+		if h.stopChan != nil {
+			close(h.stopChan)
+			h.stopChan = nil
+		}
+	}
+	if h.activeSock != nil {
+		_ = h.activeSock.Close()
+		h.activeSock = nil
+	}
+	for client := range h.clients {
+		_ = client.conn.Close()
+	}
+	h.clients = make(map[*terminalClient]struct{})
+}
+
 func (h *NodeSerialHub) Subscribe(conn *websocket.Conn) *terminalClient {
 	client := &terminalClient{conn: conn}
 
