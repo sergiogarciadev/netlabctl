@@ -10,28 +10,63 @@ export function SettingsModal({ isOpen, onClose, config, onUpdateConfig }) {
       onKeyDown={(e) => (e.key === "Enter" || e.key === "Escape") && onClose()}
       role="button"
       tabIndex={0}
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100vw",
+        height: "100vh",
+        background: "rgba(0, 0, 0, 0.7)",
+        backdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
     >
       <div
-        className="modal"
+        className="modal-dialog"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         role="presentation"
-        style={{ maxWidth: "520px", width: "90%" }}
+        style={{
+          width: "520px",
+          maxWidth: "90vw",
+          maxHeight: "85vh",
+          background: "var(--bg-card)",
+          borderRadius: "12px",
+          border: "1px solid var(--border-color)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          boxShadow: "0 20px 50px rgba(0, 0, 0, 0.8)",
+        }}
       >
-        <div className="modal-header">
+        <div
+          style={{
+            padding: "16px 20px",
+            borderBottom: "1px solid var(--border-color)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Settings size={20} className="text-blue-500" />
-            <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Application Settings</h2>
+            <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 600 }}>Application Settings</h3>
           </div>
-          <button type="button" className="btn" onClick={onClose} aria-label="Close Settings">
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: "4px 8px" }}
+            onClick={onClose}
+            aria-label="Close Settings"
+          >
             <X size={16} />
           </button>
         </div>
 
-        <div
-          className="modal-body"
-          style={{ display: "flex", flexDirection: "column", gap: "16px" }}
-        >
+        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
           {/* Section: Debugging & Inspection */}
           <div
             style={{
@@ -47,7 +82,7 @@ export function SettingsModal({ isOpen, onClose, config, onUpdateConfig }) {
 
           <div
             style={{
-              background: "var(--bg-card)",
+              background: "rgba(15, 23, 42, 0.6)",
               border: "1px solid var(--border-color)",
               borderRadius: "8px",
               padding: "14px",
@@ -90,7 +125,14 @@ export function SettingsModal({ isOpen, onClose, config, onUpdateConfig }) {
           </div>
         </div>
 
-        <div className="modal-footer" style={{ marginTop: "20px" }}>
+        <div
+          style={{
+            padding: "12px 20px",
+            borderTop: "1px solid var(--border-color)",
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+        >
           <button type="button" className="btn btn-primary" onClick={onClose}>
             Done
           </button>
