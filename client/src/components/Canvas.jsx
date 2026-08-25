@@ -431,7 +431,10 @@ export function Canvas({
         subTargetTag = subTarget?.id || subTarget?.portId || subTarget?.type;
         if (subTarget?.portId) {
           const pPos = target.getPortAbsPosition(subTarget.portId);
-          nearestPort = { portId: subTarget.portId, absPos: pPos, dist: 0 };
+          const pObj = (target.nodeData?.ports || []).find((p) => p.id === subTarget.portId);
+          const pType = pObj?.type || pObj?.netdevType || "managed";
+          const isManaged = pType === "managed";
+          nearestPort = { portId: subTarget.portId, absPos: pPos, dist: 0, port: pObj, isManaged };
         } else {
           nearestPort = findClosestPortInNode(target, pointer.x, pointer.y, 65);
         }
@@ -539,6 +542,8 @@ export function Canvas({
       }
 
       if (nearestPort?.absPos) {
+        const isManaged = nearestPort.isManaged !== false;
+
         if (!hoverHighlightRef.current || hoverHighlightRef.current.canvas !== canvas) {
           if (hoverHighlightRef.current && canvas && !canvas.isDisposed) {
             canvas.remove(hoverHighlightRef.current);
@@ -557,13 +562,24 @@ export function Canvas({
           });
           canvas.add(hoverHighlightRef.current);
         }
+
+        const strokeColor = isManaged ? "#3b82f6" : "#ef4444";
+        const fillColor = isManaged ? "rgba(59, 130, 246, 0.35)" : "rgba(239, 68, 68, 0.35)";
+
         hoverHighlightRef.current.set({
           left: nearestPort.absPos.x,
           top: nearestPort.absPos.y,
+          stroke: strokeColor,
+          fill: fillColor,
           visible: true,
         });
         canvas.bringObjectToFront(hoverHighlightRef.current);
-        canvas.defaultCursor = "crosshair";
+
+        if (!isManaged) {
+          canvas.defaultCursor = "not-allowed";
+        } else {
+          canvas.defaultCursor = "crosshair";
+        }
       } else if (hoverHighlightRef.current) {
         hoverHighlightRef.current.set({ visible: false });
         if (!wiringStateRef.current.active) {
@@ -644,7 +660,12 @@ export function Canvas({
       if (targetNodeGroup) {
         if (subTarget?.portId) {
           const pPos = targetNodeGroup.getPortAbsPosition(subTarget.portId);
-          nearPort = { portId: subTarget.portId, absPos: pPos, dist: 0 };
+          const pObj = (targetNodeGroup.nodeData?.ports || []).find(
+            (p) => p.id === subTarget.portId,
+          );
+          const pType = pObj?.type || pObj?.netdevType || "managed";
+          const isManaged = pType === "managed";
+          nearPort = { portId: subTarget.portId, absPos: pPos, dist: 0, port: pObj, isManaged };
         } else {
           nearPort = findClosestPortInNode(targetNodeGroup, pointer.x, pointer.y, 65);
         }
@@ -664,8 +685,14 @@ export function Canvas({
         const clickedPortId = nearPort.portId;
         const portAbsPos = nearPort.absPos;
         const node = targetNodeGroup.nodeData;
+        const isManaged = nearPort.isManaged !== false;
 
         opt.e.stopPropagation();
+
+        if (!isManaged) {
+          console.warn("[NETLAB-WIRE-DEBUG] Rejected wiring on non-managed port:", clickedPortId);
+          return;
+        }
 
         if (!wiringStateRef.current.active) {
           const allNodeGroups = canvas.getObjects().filter((obj) => obj.isNodeGroup);
@@ -1190,7 +1217,9 @@ function findClosestPortInNode(nodeGroup, absClickX, absClickY, threshold = 45) 
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist <= minDist) {
       minDist = dist;
-      closest = { portId: port.id, absPos: portPos, dist };
+      const pType = port.type || port.netdevType || "managed";
+      const isManaged = pType === "managed";
+      closest = { portId: port.id, absPos: portPos, dist, port, isManaged };
     }
   }
   return closest;
@@ -1531,9 +1560,18 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
 
     nodePorts.forEach((port, idx) => {
       if (matchPortId(elemId, port, idx)) {
+        const pType = port.type || port.netdevType || "managed";
+        const isManaged = pType === "managed";
+
         const tagChildren = (targetObj) => {
           targetObj.portId = port.id;
-          targetObj.hoverCursor = activeTool === "wire" ? "crosshair" : "pointer";
+          targetObj.portData = port;
+          targetObj.isManagedPort = isManaged;
+          targetObj.hoverCursor = !isManaged
+            ? "not-allowed"
+            : activeTool === "wire"
+              ? "crosshair"
+              : "pointer";
           if (targetObj._objects && Array.isArray(targetObj._objects)) {
             targetObj._objects.forEach(tagChildren);
           }
