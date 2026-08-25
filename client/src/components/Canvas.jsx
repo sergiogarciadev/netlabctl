@@ -41,7 +41,7 @@ export function Canvas({
     tempLine: null,
     tempArrow: null,
   });
-  const hoverHighlightRef = useRef(null);
+  const hoveredPortObjRef = useRef(null);
 
   const panStateRef = useRef({
     isPanning: false,
@@ -274,8 +274,12 @@ export function Canvas({
       if (wiringStateRef.current.tempArrow) {
         canvas.remove(wiringStateRef.current.tempArrow);
       }
-      if (hoverHighlightRef.current) {
-        hoverHighlightRef.current.set({ visible: false });
+      if (hoveredPortObjRef.current) {
+        const oldObj = hoveredPortObjRef.current;
+        if (typeof oldObj.set === "function") {
+          oldObj.set({ fill: oldObj.basePortColor || "#4d4d4d" });
+        }
+        hoveredPortObjRef.current = null;
       }
     }
     console.log("[NETLAB-WIRE-DEBUG] Wiring canceled/reset.");
@@ -541,47 +545,38 @@ export function Canvas({
         });
       }
 
-      if (nearestPort?.absPos) {
+      if (nearestPort && target?.isNodeGroup) {
+        const pObj = target.getPortElement ? target.getPortElement(nearestPort.portId) : null;
         const isManaged = nearestPort.isManaged !== false;
 
-        if (!hoverHighlightRef.current || hoverHighlightRef.current.canvas !== canvas) {
-          if (hoverHighlightRef.current && canvas && !canvas.isDisposed) {
-            canvas.remove(hoverHighlightRef.current);
+        if (pObj) {
+          if (hoveredPortObjRef.current && hoveredPortObjRef.current !== pObj) {
+            const oldObj = hoveredPortObjRef.current;
+            if (typeof oldObj.set === "function") {
+              oldObj.set({ fill: oldObj.basePortColor || "#4d4d4d" });
+            }
           }
-          hoverHighlightRef.current = new Circle({
-            radius: 10,
-            fill: "rgba(59, 130, 246, 0.35)",
-            stroke: "#3b82f6",
-            strokeWidth: 2,
-            strokeDashArray: [4, 2],
-            originX: "center",
-            originY: "center",
-            selectable: false,
-            evented: false,
-            visible: false,
-          });
-          canvas.add(hoverHighlightRef.current);
+
+          hoveredPortObjRef.current = pObj;
+          const highlightColor = isManaged ? "#00ff00" : "#ef4444";
+          pObj.set({ fill: highlightColor });
+          canvas.requestRenderAll();
         }
-
-        const strokeColor = isManaged ? "#3b82f6" : "#ef4444";
-        const fillColor = isManaged ? "rgba(59, 130, 246, 0.35)" : "rgba(239, 68, 68, 0.35)";
-
-        hoverHighlightRef.current.set({
-          left: nearestPort.absPos.x,
-          top: nearestPort.absPos.y,
-          stroke: strokeColor,
-          fill: fillColor,
-          visible: true,
-        });
-        canvas.bringObjectToFront(hoverHighlightRef.current);
 
         if (!isManaged) {
           canvas.defaultCursor = "not-allowed";
         } else {
           canvas.defaultCursor = "crosshair";
         }
-      } else if (hoverHighlightRef.current) {
-        hoverHighlightRef.current.set({ visible: false });
+      } else {
+        if (hoveredPortObjRef.current) {
+          const oldObj = hoveredPortObjRef.current;
+          if (typeof oldObj.set === "function") {
+            oldObj.set({ fill: oldObj.basePortColor || "#4d4d4d" });
+          }
+          hoveredPortObjRef.current = null;
+          canvas.requestRenderAll();
+        }
         if (!wiringStateRef.current.active) {
           canvas.defaultCursor = activeToolRef.current === "wire" ? "crosshair" : "default";
         }
@@ -1585,18 +1580,23 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
             (w.dstNodeId === node.id && w.dstPortId === port.id),
         );
 
-        let portColor = "#4d4d4d";
+        let basePortColor = "#4d4d4d";
         if (isConnected) {
-          portColor = "#00ff00";
-        } else if (port.netdevType === "user") {
-          portColor = "#0000ff";
-        } else if (port.netdevType === "qemu") {
-          portColor = "#8800ff";
+          basePortColor = "#00ff00";
+        } else if (pType === "user" || pType === "slirp") {
+          basePortColor = "#3b82f6";
+        } else if (pType === "bridge") {
+          basePortColor = "#a855f7";
+        } else if (pType === "tap") {
+          basePortColor = "#f59e0b";
+        } else if (pType === "unmanaged") {
+          basePortColor = "#64748b";
         }
 
         if (typeof obj.set === "function") {
-          obj.set({ fill: portColor });
+          obj.set({ fill: basePortColor });
         }
+        obj.basePortColor = basePortColor;
       }
     });
 
@@ -1621,6 +1621,9 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
 
   nodeGroup.isNodeGroup = true;
   nodeGroup.nodeData = node;
+  nodeGroup.getPortElement = (portId) => {
+    return portElementsMap.get(portId) || null;
+  };
 
   nodeGroup.portRelativePositions = new Map();
   nodePorts.forEach((port, idx) => {
