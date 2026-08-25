@@ -38,9 +38,30 @@ func NewManager(baseDir string) *Manager {
 	}
 }
 
+// SanitizeID cleans an identifier and enforces strict path traversal protection.
+func SanitizeID(id string) (string, error) {
+	if id == "" {
+		return "", fmt.Errorf("id cannot be empty")
+	}
+	clean := filepath.Clean(id)
+	if strings.ContainsAny(clean, "/\\:\x00") || strings.HasPrefix(clean, "..") || clean == "." || clean == ".." {
+		return "", fmt.Errorf("invalid path traversal characters in id: %q", id)
+	}
+	base := filepath.Base(clean)
+	if base == "." || base == ".." || base == "/" {
+		return "", fmt.Errorf("invalid id: %q", id)
+	}
+	return base, nil
+}
+
 // NodeDir returns the working directory for a given project node.
 func (m *Manager) NodeDir(projectID, nodeID string) string {
-	return filepath.Join(m.baseDir, "projects", projectID, "nodes", nodeID)
+	cleanProj, errProj := SanitizeID(projectID)
+	cleanNode, errNode := SanitizeID(nodeID)
+	if errProj != nil || errNode != nil {
+		return ""
+	}
+	return filepath.Join(m.baseDir, "projects", cleanProj, "nodes", cleanNode)
 }
 
 // PrepareNodeDisk creates a differential .qcow2 overlay disk backed by the template's image file.

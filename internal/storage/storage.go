@@ -168,14 +168,43 @@ func (s *Storage) DevicesDir() string {
 	return filepath.Join(s.baseDir, "devices")
 }
 
+// SanitizeID cleans an identifier and enforces strict path traversal protection.
+func SanitizeID(id string) (string, error) {
+	if id == "" {
+		return "", fmt.Errorf("id cannot be empty")
+	}
+	clean := filepath.Clean(id)
+	if strings.ContainsAny(clean, "/\\:\x00") || strings.HasPrefix(clean, "..") || clean == "." || clean == ".." {
+		return "", fmt.Errorf("invalid path traversal characters in id: %q", id)
+	}
+	base := filepath.Base(clean)
+	if base == "." || base == ".." || base == "/" {
+		return "", fmt.Errorf("invalid id: %q", id)
+	}
+	return base, nil
+}
+
 // ProjectsDir returns the path to projects directory.
 func (s *Storage) ProjectsDir() string {
 	return filepath.Join(s.baseDir, "projects")
 }
 
-// ProjectDir returns the path for a specific project.
-func (s *Storage) ProjectDir(projectID string) string {
-	return filepath.Join(s.ProjectsDir(), projectID)
+// ProjectDir returns the validated path for a specific project, preventing path traversal.
+func (s *Storage) ProjectDir(projectID string) (string, error) {
+	cleanID, err := SanitizeID(projectID)
+	if err != nil {
+		return "", fmt.Errorf("invalid project id %q: %w", projectID, err)
+	}
+
+	projectsDir := filepath.Clean(s.ProjectsDir())
+	pDir := filepath.Join(projectsDir, cleanID)
+
+	rel, err := filepath.Rel(projectsDir, pDir)
+	if err != nil || strings.HasPrefix(rel, "..") || rel == "." {
+		return "", fmt.Errorf("path traversal detected in project id %q", projectID)
+	}
+
+	return pDir, nil
 }
 
 // ListTemplates scans the devices directory and loads machine.json or template.json files.
@@ -313,11 +342,16 @@ func (s *Storage) ListProjects() ([]model.Topology, error) {
 
 // GetProject loads a project's topology.json.
 func (s *Storage) GetProject(id string) (*model.Topology, error) {
+	pDir, err := s.ProjectDir(id)
+	if err != nil {
+		return nil, err
+	}
+
 	lock := s.getProjectLock(id)
 	lock.RLock()
 	defer lock.RUnlock()
 
-	topPath := filepath.Join(s.ProjectDir(id), "topology.json")
+	topPath := filepath.Join(pDir, "topology.json")
 	data, err := os.ReadFile(topPath)
 	if err != nil {
 		return nil, fmt.Errorf("project %s not found: %w", id, err)
@@ -330,7 +364,7 @@ func (s *Storage) GetProject(id string) (*model.Topology, error) {
 
 	if model.SanitizeTopologyNodeIDs(&top) {
 		logger.Log.Warn("Repaired duplicate node IDs in topology", "projectID", id)
-		_ = s.saveProjectInternal(&top)
+		_ = s.saveProjectInternal(&top, pDir)
 	}
 
 	return &top, nil
@@ -338,21 +372,26 @@ func (s *Storage) GetProject(id string) (*model.Topology, error) {
 
 // SaveProject writes a project's topology.json.
 func (s *Storage) SaveProject(top *model.Topology) error {
-	if top == nil {
-		return fmt.Errorf("topology cannot be nil")
+	if top == nil || top.ID == "" {
+		return fmt.Errorf("topology or project ID cannot be empty")
 	}
+
+	pDir, err := s.ProjectDir(top.ID)
+	if err != nil {
+		return err
+	}
+
 	lock := s.getProjectLock(top.ID)
 	lock.Lock()
 	defer lock.Unlock()
 
-	return s.saveProjectInternal(top)
+	return s.saveProjectInternal(top, pDir)
 }
 
-func (s *Storage) saveProjectInternal(top *model.Topology) error {
+func (s *Storage) saveProjectInternal(top *model.Topology, pDir string) error {
 	if top != nil {
 		_ = model.SanitizeTopologyNodeIDs(top)
 	}
-	pDir := s.ProjectDir(top.ID)
 	if err := os.MkdirAll(pDir, 0755); err != nil {
 		return fmt.Errorf("failed to create project dir: %w", err)
 	}
@@ -368,11 +407,15 @@ func (s *Storage) saveProjectInternal(top *model.Topology) error {
 
 // DeleteProject removes a project directory and all its files.
 func (s *Storage) DeleteProject(id string) error {
+	pDir, err := s.ProjectDir(id)
+	if err != nil {
+		return err
+	}
+
 	lock := s.getProjectLock(id)
 	lock.Lock()
 	defer lock.Unlock()
 
-	pDir := s.ProjectDir(id)
 	return os.RemoveAll(pDir)
 }
 

@@ -170,3 +170,44 @@ func TestConcurrentProjectAccess(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestPathTraversalProtection(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "netlabctl_traversal_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	s, err := NewStorage(tempDir)
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
+
+	invalidIDs := []string{
+		"../foo",
+		"../../etc/passwd",
+		"/etc/passwd",
+		"foo/bar",
+		"foo\\bar",
+		"..",
+		".",
+	}
+
+	for _, id := range invalidIDs {
+		if _, err := s.GetProject(id); err == nil {
+			t.Errorf("GetProject expected error for path traversal ID %q, got nil", id)
+		}
+
+		if err := s.SaveProject(&model.Topology{ID: id, Name: "Bad"}); err == nil {
+			t.Errorf("SaveProject expected error for path traversal ID %q, got nil", id)
+		}
+
+		if err := s.DeleteProject(id); err == nil {
+			t.Errorf("DeleteProject expected error for path traversal ID %q, got nil", id)
+		}
+
+		if _, _, err := s.GetTemplate(id); err == nil {
+			t.Errorf("GetTemplate expected error for path traversal ID %q, got nil", id)
+		}
+	}
+}
