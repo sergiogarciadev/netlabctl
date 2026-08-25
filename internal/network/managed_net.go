@@ -60,10 +60,12 @@ type WireBridge struct {
 	last100msDstSrc int64
 	stopChan        chan struct{}
 
-	condMu     sync.RWMutex
-	tzspMu     sync.Mutex
-	tzspTarget string
-	tzspConn   *net.UDPConn
+	condMu        sync.RWMutex
+	tzspMu        sync.Mutex
+	tzspTarget    string
+	tzspConn      *net.UDPConn
+	timersMu      sync.Mutex
+	pendingTimers map[*time.Timer]struct{}
 }
 
 func (b *WireBridge) GetConditions() model.NetworkCondition {
@@ -359,6 +361,13 @@ func (b *WireBridge) runBridge() {
 	defer b.PortB.Unsubscribe(subIDB)
 
 	defer func() {
+		b.timersMu.Lock()
+		for t := range b.pendingTimers {
+			t.Stop()
+		}
+		b.pendingTimers = nil
+		b.timersMu.Unlock()
+
 		b.tzspMu.Lock()
 		if b.tzspConn != nil {
 			_ = b.tzspConn.Close()
@@ -427,7 +436,28 @@ func (b *WireBridge) processAndForward(frame EthernetFrame, dst *ManagedPortSock
 	}
 
 	if delayMs > 0 {
-		time.AfterFunc(time.Duration(delayMs)*time.Millisecond, forwardFunc)
+		var t *time.Timer
+		t = time.AfterFunc(time.Duration(delayMs)*time.Millisecond, func() {
+			b.timersMu.Lock()
+			if b.pendingTimers != nil {
+				delete(b.pendingTimers, t)
+			}
+			b.timersMu.Unlock()
+
+			select {
+			case <-b.stopChan:
+				return // Bridge is tearing down/stopped
+			default:
+				forwardFunc()
+			}
+		})
+
+		b.timersMu.Lock()
+		if b.pendingTimers == nil {
+			b.pendingTimers = make(map[*time.Timer]struct{})
+		}
+		b.pendingTimers[t] = struct{}{}
+		b.timersMu.Unlock()
 	} else {
 		forwardFunc()
 	}
