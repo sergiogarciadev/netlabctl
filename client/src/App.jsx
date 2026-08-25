@@ -32,6 +32,7 @@ export function App() {
   const [activeTerminalNodes, setActiveTerminalNodes] = useState([]);
   const [focusedTerminalNodeId, setFocusedTerminalNodeId] = useState(null);
   const [terminalOrder, setTerminalOrder] = useState([]);
+  const [activeTool, setActiveTool] = useState("select");
   const [isRunning, setIsRunning] = useState(false);
 
   const handleFocusTerminal = useCallback((nodeId) => {
