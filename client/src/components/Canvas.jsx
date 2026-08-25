@@ -675,16 +675,18 @@ export function Canvas({
     const nodeGroupsMap = new Map();
 
     const renderAll = async () => {
-      for (const tmpl of templates) {
-        if (!svgCache.has(tmpl.id)) {
-          try {
-            const svgStr = await fetchTemplateDrawing(tmpl.id);
-            svgCache.set(tmpl.id, svgStr);
-          } catch (err) {
-            console.error(`[NETLAB-WIRE-DEBUG] Failed to prefetch SVG for ${tmpl.id}`, err);
+      await Promise.all(
+        templates.map(async (tmpl) => {
+          if (!svgCache.has(tmpl.id)) {
+            try {
+              const svgStr = await fetchTemplateDrawing(tmpl.id);
+              svgCache.set(tmpl.id, svgStr);
+            } catch (err) {
+              console.error(`[NETLAB-WIRE-DEBUG] Failed to prefetch SVG for ${tmpl.id}`, err);
+            }
           }
-        }
-      }
+        }),
+      );
 
       if (isCancelled || canvas.isDisposed || !canvas.getContext()) return;
 
@@ -695,19 +697,25 @@ export function Canvas({
         canvas.setViewportTransform(viewportTransformRef.current);
       }
 
-      for (const node of nodes) {
-        const tmpl = templates.find((t) => t.id === node.templateId);
-        const svgStr = tmpl ? svgCache.get(tmpl.id) || "" : "";
+      const createdGroups = await Promise.all(
+        nodes.map(async (node) => {
+          const tmpl = templates.find((t) => t.id === node.templateId);
+          const svgStr = tmpl ? svgCache.get(tmpl.id) || "" : "";
 
-        const nodeGroup = await createExactSVGDeviceGroup(
-          node,
-          tmpl,
-          svgStr,
-          wires,
-          activeToolRef.current,
-        );
-        if (isCancelled || canvas.isDisposed) return;
+          const nodeGroup = await createExactSVGDeviceGroup(
+            node,
+            tmpl,
+            svgStr,
+            wires,
+            activeToolRef.current,
+          );
+          return { node, nodeGroup };
+        }),
+      );
 
+      if (isCancelled || canvas.isDisposed) return;
+
+      for (const { node, nodeGroup } of createdGroups) {
         nodeGroup.lastValidLeft = node.x;
         nodeGroup.lastValidTop = node.y;
 
