@@ -39,7 +39,9 @@ export function App() {
   const [focusedTerminalNodeId, setFocusedTerminalNodeId] = useState(null);
   const [terminalOrder, setTerminalOrder] = useState([]);
   const [activeTool, setActiveTool] = useState("select");
-  const [isRunning, setIsRunning] = useState(false);
+  const isRunning =
+    project.simulationStatus === "running" ||
+    (project.nodes || []).some((n) => n.status === "running" || n.power === "on");
   const [errorMessage, setErrorMessage] = useState(null);
 
   const showError = useCallback((msg) => {
@@ -224,10 +226,6 @@ export function App() {
         setSelectedNode(null);
         const top = await fetchProject(projectId);
         setProject(top);
-        const active =
-          top.simulationStatus === "running" ||
-          top.nodes?.some((n) => n.power === "on" || n.status === "running");
-        setIsRunning(Boolean(active));
         historyRef.current = [JSON.parse(JSON.stringify(top))];
         historyIndexRef.current = 0;
         updateHistoryButtons();
@@ -307,10 +305,6 @@ export function App() {
 
     const updateProjectState = (top) => {
       setProject(top);
-      const active =
-        top.simulationStatus === "running" ||
-        top.nodes?.some((n) => n.power === "on" || n.status === "running");
-      setIsRunning(Boolean(active));
     };
 
     fetchProject("default")
@@ -343,10 +337,6 @@ export function App() {
       if (msg.type === "project_state") {
         console.log("[NETLAB-APP-DEBUG] Received WS project_state:", msg.data);
         updateProjectState(msg.data);
-      } else if (msg.type === "simulation_started") {
-        setIsRunning(true);
-      } else if (msg.type === "simulation_stopped") {
-        setIsRunning(false);
       } else if (msg.type === "wire_stats") {
         if (Array.isArray(msg.data?.stats)) {
           setWireStats(msg.data.stats);
@@ -361,7 +351,6 @@ export function App() {
   }, [loadProjectsList]);
 
   const handleStartLab = useCallback(async () => {
-    setIsRunning(true);
     try {
       await startProjectSimulation(projectRef.current.id);
     } catch (err) {
@@ -372,7 +361,6 @@ export function App() {
   }, [showError]);
 
   const handleStopLab = useCallback(async () => {
-    setIsRunning(false);
     try {
       await stopProjectSimulation(projectRef.current.id);
     } catch (err) {
