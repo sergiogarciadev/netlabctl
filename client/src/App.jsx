@@ -13,6 +13,8 @@ import {
   fetchProject,
   fetchProjects,
   fetchTemplates,
+  resetNodePower,
+  shutdownNodePower,
   startNodePower,
   startProjectSimulation,
   stopNodePower,
@@ -60,6 +62,16 @@ export function App() {
   useEffect(() => {
     projectRef.current = project;
   }, [project]);
+
+  // Keep selectedNode synchronized with the latest node object in project.nodes
+  useEffect(() => {
+    if (selectedNode) {
+      const latestNode = project.nodes?.find((n) => n.id === selectedNode.id);
+      if (latestNode && latestNode !== selectedNode) {
+        setSelectedNode(latestNode);
+      }
+    }
+  }, [project.nodes, selectedNode]);
 
   // History State Stack for Undo / Redo
   const historyRef = useRef([]);
@@ -318,27 +330,44 @@ export function App() {
     wsClientRef.current?.stopSimulation(projectRef.current.id);
   }, []);
 
-  const handleToggleNodePower = useCallback(async (nodeId) => {
+  const handleStartNode = useCallback(async (nodeId) => {
     const proj = projectRef.current;
-    const targetNode = (proj.nodes || []).find((n) => n.id === nodeId);
-    if (!targetNode) return;
-
-    const isNodeRunning = targetNode.power === "on" || targetNode.status === "running";
-    if (isNodeRunning) {
-      try {
-        await stopNodePower(proj.id, nodeId);
-      } catch (err) {
-        console.error("[NETLAB-APP-DEBUG] Failed to stop node power via REST:", err);
-      }
-      wsClientRef.current?.stopNode(proj.id, nodeId);
-    } else {
-      try {
-        await startNodePower(proj.id, nodeId);
-      } catch (err) {
-        console.error("[NETLAB-APP-DEBUG] Failed to start node power via REST:", err);
-      }
-      wsClientRef.current?.startNode(proj.id, nodeId);
+    try {
+      await startNodePower(proj.id, nodeId);
+    } catch (err) {
+      console.error("[NETLAB-APP-DEBUG] Failed to start node power via REST:", err);
     }
+    wsClientRef.current?.startNode(proj.id, nodeId);
+  }, []);
+
+  const handleShutdownNode = useCallback(async (nodeId) => {
+    const proj = projectRef.current;
+    try {
+      await shutdownNodePower(proj.id, nodeId);
+    } catch (err) {
+      console.error("[NETLAB-APP-DEBUG] Failed to shutdown node via REST:", err);
+    }
+    wsClientRef.current?.shutdownNode(proj.id, nodeId);
+  }, []);
+
+  const handleResetNode = useCallback(async (nodeId) => {
+    const proj = projectRef.current;
+    try {
+      await resetNodePower(proj.id, nodeId);
+    } catch (err) {
+      console.error("[NETLAB-APP-DEBUG] Failed to reset node via REST:", err);
+    }
+    wsClientRef.current?.resetNode(proj.id, nodeId);
+  }, []);
+
+  const handleStopNode = useCallback(async (nodeId) => {
+    const proj = projectRef.current;
+    try {
+      await stopNodePower(proj.id, nodeId);
+    } catch (err) {
+      console.error("[NETLAB-APP-DEBUG] Failed to force stop node via REST:", err);
+    }
+    wsClientRef.current?.stopNode(proj.id, nodeId);
   }, []);
 
   const handleAddNodeFromTemplate = useCallback(
@@ -524,7 +553,10 @@ export function App() {
           onUpdateNode={handleUpdateNode}
           onDeleteNode={handleDeleteNode}
           onUpdateWire={handleUpdateWire}
-          onToggleNodePower={handleToggleNodePower}
+          onStartNode={handleStartNode}
+          onShutdownNode={handleShutdownNode}
+          onResetNode={handleResetNode}
+          onStopNode={handleStopNode}
         />
 
         <AddDeviceModal

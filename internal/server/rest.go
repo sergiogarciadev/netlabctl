@@ -317,6 +317,36 @@ func (s *Server) handleStartSingleNode(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "running", "nodeId": nodeID})
 }
 
+func (s *Server) handleShutdownSingleNode(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	nodeID := r.PathValue("nodeId")
+	if id == "" || nodeID == "" {
+		http.Error(w, "Missing project id or node id", http.StatusBadRequest)
+		return
+	}
+
+	logger.Log.Info("REST API: Shutdown single node", "id", id, "nodeId", nodeID)
+	s.hub.shutdownSingleNode(id, nodeID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "shutting_down", "nodeId": nodeID})
+}
+
+func (s *Server) handleResetSingleNode(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	nodeID := r.PathValue("nodeId")
+	if id == "" || nodeID == "" {
+		http.Error(w, "Missing project id or node id", http.StatusBadRequest)
+		return
+	}
+
+	logger.Log.Info("REST API: Reset single node", "id", id, "nodeId", nodeID)
+	s.hub.resetSingleNode(id, nodeID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "resetted", "nodeId": nodeID})
+}
+
 func (s *Server) handleStopSingleNode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	nodeID := r.PathValue("nodeId")

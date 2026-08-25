@@ -96,6 +96,22 @@ export async function startNodePower(projectId, nodeId) {
   return res.json();
 }
 
+export async function shutdownNodePower(projectId, nodeId) {
+  const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}/shutdown`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`Failed to shutdown node ${nodeId}`);
+  return res.json();
+}
+
+export async function resetNodePower(projectId, nodeId) {
+  const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}/reset`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`Failed to reset node ${nodeId}`);
+  return res.json();
+}
+
 export async function stopNodePower(projectId, nodeId) {
   const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}/stop`, {
     method: "POST",
@@ -170,6 +186,14 @@ export class WSClient {
 
   startNode(projectId, nodeId) {
     this.send("start_node", { projectId, nodeId });
+  }
+
+  shutdownNode(projectId, nodeId) {
+    this.send("shutdown_node", { projectId, nodeId });
+  }
+
+  resetNode(projectId, nodeId) {
+    this.send("reset_node", { projectId, nodeId });
   }
 
   stopNode(projectId, nodeId) {

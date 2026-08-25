@@ -25,9 +25,10 @@ type NodeInstance struct {
 }
 
 type Manager struct {
-	baseDir   string
-	mu        sync.Mutex
-	instances map[string]*NodeInstance
+	baseDir    string
+	mu         sync.Mutex
+	instances  map[string]*NodeInstance
+	OnNodeExit func(projectID, nodeID string)
 }
 
 func NewManager(baseDir string) *Manager {
@@ -244,11 +245,46 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		} else {
 			logger.Log.Info("QEMU process exited cleanly", "nodeID", node.ID)
 		}
+
+		if m.OnNodeExit != nil {
+			m.OnNodeExit(projectID, node.ID)
+		}
 	}()
 
 	m.instances[node.ID] = inst
 	logger.Log.Info("Started QEMU instance for node", "nodeID", node.ID, "pid", cmd.Process.Pid)
 	return inst, nil
+}
+
+// SendMonitorCommand sends an HMP command (e.g. system_powerdown, system_reset) over the node's monitor socket.
+func (m *Manager) SendMonitorCommand(projectID, nodeID, command string) error {
+	nDir := m.NodeDir(projectID, nodeID)
+	monitorSock := filepath.Join(nDir, "monitor.sock")
+
+	conn, err := net.DialTimeout("unix", monitorSock, 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to dial QEMU monitor socket for node %s: %w", nodeID, err)
+	}
+	defer conn.Close()
+
+	cmdStr := command + "\n"
+	_, err = conn.Write([]byte(cmdStr))
+	if err != nil {
+		return fmt.Errorf("failed to send command %q to monitor for node %s: %w", command, nodeID, err)
+	}
+
+	logger.Log.Info("Sent QEMU monitor command", "nodeID", nodeID, "command", command)
+	return nil
+}
+
+// ShutdownNode sends ACPI powerdown signal via HMP monitor socket system_powerdown.
+func (m *Manager) ShutdownNode(projectID, nodeID string) error {
+	return m.SendMonitorCommand(projectID, nodeID, "system_powerdown")
+}
+
+// ResetNode sends system reset signal via HMP monitor socket system_reset.
+func (m *Manager) ResetNode(projectID, nodeID string) error {
+	return m.SendMonitorCommand(projectID, nodeID, "system_reset")
 }
 
 // SetPortLinkStatus connects to the node's QEMU monitor socket and sets link status on/off.

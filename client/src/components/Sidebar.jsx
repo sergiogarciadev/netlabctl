@@ -8,6 +8,7 @@ import {
   Play,
   Power,
   Radio,
+  RefreshCw,
   Server,
   Square,
   Terminal as TerminalIcon,
@@ -26,7 +27,10 @@ export function Sidebar({
   onUpdateNode,
   onDeleteNode,
   onUpdateWire,
-  onToggleNodePower,
+  onStartNode,
+  onShutdownNode,
+  onResetNode,
+  onStopNode,
 }) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [name, setName] = useState("");
@@ -195,6 +199,7 @@ export function Sidebar({
         </button>
       </div>
 
+      {/* Row 1: Template Name + Power Badge */}
       <div
         style={{
           display: "flex",
@@ -202,7 +207,7 @@ export function Sidebar({
           alignItems: "center",
           fontSize: "0.8rem",
           color: "var(--text-muted)",
-          marginBottom: "12px",
+          marginBottom: "10px",
         }}
       >
         <div>
@@ -211,59 +216,115 @@ export function Sidebar({
             {tmpl ? tmpl.name : selectedNode.templateId}
           </strong>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span
-            style={{
-              padding: "2px 8px",
-              borderRadius: "10px",
-              fontSize: "0.75rem",
-              fontWeight: 600,
-              background:
-                selectedNode.power === "on" || selectedNode.status === "running"
-                  ? "rgba(34, 197, 94, 0.15)"
-                  : "rgba(239, 68, 68, 0.15)",
-              color:
-                selectedNode.power === "on" || selectedNode.status === "running"
-                  ? "#22c55e"
-                  : "#ef4444",
-              border: `1px solid ${
-                selectedNode.power === "on" || selectedNode.status === "running"
-                  ? "#22c55e44"
-                  : "#ef444444"
-              }`,
-            }}
-          >
-            Power: {selectedNode.power === "on" || selectedNode.status === "running" ? "ON" : "OFF"}
-          </span>
 
+        <span
+          style={{
+            padding: "2px 8px",
+            borderRadius: "10px",
+            fontSize: "0.75rem",
+            fontWeight: 600,
+            background:
+              selectedNode.power === "on" || selectedNode.status === "running"
+                ? "rgba(34, 197, 94, 0.15)"
+                : "rgba(239, 68, 68, 0.15)",
+            color:
+              selectedNode.power === "on" || selectedNode.status === "running"
+                ? "#22c55e"
+                : "#ef4444",
+            border: `1px solid ${
+              selectedNode.power === "on" || selectedNode.status === "running"
+                ? "#22c55e44"
+                : "#ef444444"
+            }`,
+          }}
+        >
+          Power: {selectedNode.power === "on" || selectedNode.status === "running" ? "ON" : "OFF"}
+        </span>
+      </div>
+
+      {/* Row 2: Power Controls (Start / Shutdown / Reset / Force Power Off) */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          marginBottom: "14px",
+          flexWrap: "wrap",
+        }}
+      >
+        {selectedNode.power !== "on" && selectedNode.status !== "running" ? (
           <button
             type="button"
-            className={`btn ${selectedNode.power === "on" || selectedNode.status === "running" ? "btn-danger" : "btn-success"}`}
+            className="btn btn-success"
             style={{
-              padding: "3px 8px",
+              padding: "4px 10px",
               fontSize: "0.75rem",
               display: "flex",
               alignItems: "center",
               gap: "4px",
             }}
-            onClick={() => onToggleNodePower?.(selectedNode.id)}
-            title={
-              selectedNode.power === "on" || selectedNode.status === "running"
-                ? "Power Off / Stop Machine Instance"
-                : "Power On / Start Machine Instance"
-            }
+            onClick={() => onStartNode?.(selectedNode.id)}
+            title="Power On / Start Machine Instance"
           >
-            {selectedNode.power === "on" || selectedNode.status === "running" ? (
-              <>
-                <Square size={12} /> Stop Machine
-              </>
-            ) : (
-              <>
-                <Play size={12} /> Start Machine
-              </>
-            )}
+            <Play size={13} /> Start Machine
           </button>
-        </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn btn-danger"
+              style={{
+                padding: "4px 8px",
+                fontSize: "0.75rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+              onClick={() => onShutdownNode?.(selectedNode.id)}
+              title="Send ACPI Shutdown Signal via QMP"
+            >
+              <Power size={13} /> Shutdown
+            </button>
+
+            <button
+              type="button"
+              className="btn"
+              style={{
+                padding: "4px 8px",
+                fontSize: "0.75rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                background: "var(--bg-card)",
+                border: "1px solid var(--border-color)",
+                color: "#f59e0b",
+              }}
+              onClick={() => onResetNode?.(selectedNode.id)}
+              title="Reset / Reboot Machine via QMP"
+            >
+              <RefreshCw size={13} /> Reset
+            </button>
+
+            <button
+              type="button"
+              className="btn"
+              style={{
+                padding: "4px 8px",
+                fontSize: "0.75rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                background: "rgba(239, 68, 68, 0.1)",
+                border: "1px solid #ef444444",
+                color: "#ef4444",
+              }}
+              onClick={() => onStopNode?.(selectedNode.id)}
+              title="Force Power Off Immediately"
+            >
+              <Square size={13} /> Force Power Off
+            </button>
+          </>
+        )}
       </div>
 
       {/* Tabs */}

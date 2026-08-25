@@ -8,6 +8,8 @@ const (
 	MsgTypeStartSimulation  = "start_simulation"
 	MsgTypeStopSimulation   = "stop_simulation"
 	MsgTypeStartNode        = "start_node"
+	MsgTypeShutdownNode     = "shutdown_node"
+	MsgTypeResetNode        = "reset_node"
 	MsgTypeStopNode         = "stop_node"
 	MsgTypeTerminalInput    = "terminal_input"
 	MsgTypeSetWireCondition = "set_wire_condition"

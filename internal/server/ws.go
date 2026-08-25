@@ -46,7 +46,7 @@ type WSHub struct {
 
 // NewWSHub initializes the WebSocket hub.
 func NewWSHub(store *storage.Storage, qemuMgr *qemu.Manager, netMgr *network.NetworkManager) *WSHub {
-	return &WSHub{
+	hub := &WSHub{
 		storage:    store,
 		qemuMgr:    qemuMgr,
 		netMgr:     netMgr,
@@ -55,6 +55,10 @@ func NewWSHub(store *storage.Storage, qemuMgr *qemu.Manager, netMgr *network.Net
 		unregister: make(chan *Client),
 		broadcast:  make(chan []byte, 256),
 	}
+	if qemuMgr != nil {
+		qemuMgr.OnNodeExit = hub.handleNodeExit
+	}
+	return hub
 }
 
 // Run executes the hub event loop and 100ms packet stats ticker.
@@ -276,6 +280,34 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 			c.hub.startSingleNode(projectID, payload.NodeID)
 		}
 
+	case model.MsgTypeShutdownNode:
+		var payload model.NodeActionPayload
+		if err := json.Unmarshal(msg.Data, &payload); err == nil && payload.NodeID != "" {
+			projectID := payload.ProjectID
+			if projectID == "" {
+				projectID = c.projectID
+			}
+			if projectID == "" {
+				projectID = "default"
+			}
+			logger.Log.Info("WS Command: Shutdown node", "node", payload.NodeID, "project", projectID)
+			c.hub.shutdownSingleNode(projectID, payload.NodeID)
+		}
+
+	case model.MsgTypeResetNode:
+		var payload model.NodeActionPayload
+		if err := json.Unmarshal(msg.Data, &payload); err == nil && payload.NodeID != "" {
+			projectID := payload.ProjectID
+			if projectID == "" {
+				projectID = c.projectID
+			}
+			if projectID == "" {
+				projectID = "default"
+			}
+			logger.Log.Info("WS Command: Reset node", "node", payload.NodeID, "project", projectID)
+			c.hub.resetSingleNode(projectID, payload.NodeID)
+		}
+
 	case model.MsgTypeStopNode:
 		var payload model.NodeActionPayload
 		if err := json.Unmarshal(msg.Data, &payload); err == nil && payload.NodeID != "" {
@@ -481,6 +513,20 @@ func (h *WSHub) startSingleNode(projectID string, nodeID string) {
 	h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
 }
 
+func (h *WSHub) shutdownSingleNode(projectID string, nodeID string) {
+	err := h.qemuMgr.ShutdownNode(projectID, nodeID)
+	if err != nil {
+		logger.Log.Error("Failed to send ACPI shutdown to node", "nodeID", nodeID, "error", err)
+	}
+}
+
+func (h *WSHub) resetSingleNode(projectID string, nodeID string) {
+	err := h.qemuMgr.ResetNode(projectID, nodeID)
+	if err != nil {
+		logger.Log.Error("Failed to send system reset to node", "nodeID", nodeID, "error", err)
+	}
+}
+
 func (h *WSHub) stopSingleNode(projectID string, nodeID string) {
 	_ = h.qemuMgr.StopNode(nodeID)
 
@@ -495,6 +541,27 @@ func (h *WSHub) stopSingleNode(projectID string, nodeID string) {
 		}
 		_ = h.storage.SaveProject(top)
 		h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
+	}
+}
+
+func (h *WSHub) handleNodeExit(projectID, nodeID string) {
+	top, err := h.storage.GetProject(projectID)
+	if err == nil {
+		updated := false
+		for i := range top.Nodes {
+			if top.Nodes[i].ID == nodeID {
+				if top.Nodes[i].Status != "stopped" || top.Nodes[i].Power != "off" {
+					top.Nodes[i].Status = "stopped"
+					top.Nodes[i].Power = "off"
+					updated = true
+				}
+				break
+			}
+		}
+		if updated {
+			_ = h.storage.SaveProject(top)
+			h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
+		}
 	}
 }
 
