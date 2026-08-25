@@ -25,6 +25,7 @@ export function Canvas({
   onAddWire,
   onDeleteWire,
   onDeleteNode,
+  onUpdateNode,
 }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -54,6 +55,7 @@ export function Canvas({
   const onAddWireRef = useRef(onAddWire);
   const onDeleteWireRef = useRef(onDeleteWire);
   const onDeleteNodeRef = useRef(onDeleteNode);
+  const onUpdateNodeRef = useRef(onUpdateNode);
 
   useEffect(() => {
     activeToolRef.current = activeTool;
@@ -70,6 +72,9 @@ export function Canvas({
   useEffect(() => {
     onDeleteNodeRef.current = onDeleteNode;
   }, [onDeleteNode]);
+  useEffect(() => {
+    onUpdateNodeRef.current = onUpdateNode;
+  }, [onUpdateNode]);
 
   // Isolated local debug info state
   const [debugInfo, setDebugInfo] = useState(null);
