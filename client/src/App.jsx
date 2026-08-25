@@ -32,9 +32,7 @@ export function App() {
   const [activeTerminalNodes, setActiveTerminalNodes] = useState([]);
   const [focusedTerminalNodeId, setFocusedTerminalNodeId] = useState(null);
   const [terminalOrder, setTerminalOrder] = useState([]);
-  const [activeTool, setActiveTool] = useState("select");
   const [isRunning, setIsRunning] = useState(false);
-  const [autoStartMachines, setAutoStartMachines] = useState(true);
 
   const handleFocusTerminal = useCallback((nodeId) => {
     setFocusedTerminalNodeId(nodeId);
@@ -302,12 +300,12 @@ export function App() {
   const handleStartLab = useCallback(async () => {
     setIsRunning(true);
     try {
-      await startProjectSimulation(projectRef.current.id, autoStartMachines);
+      await startProjectSimulation(projectRef.current.id);
     } catch (err) {
       console.error("[NETLAB-APP-DEBUG] Failed to start simulation via REST:", err);
     }
-    wsClientRef.current?.startSimulation(projectRef.current.id, autoStartMachines);
-  }, [autoStartMachines]);
+    wsClientRef.current?.startSimulation(projectRef.current.id);
+  }, []);
 
   const handleStopLab = useCallback(async () => {
     setIsRunning(false);
@@ -495,8 +493,6 @@ export function App() {
         onRedo={handleRedo}
         onStart={handleStartLab}
         onStop={handleStopLab}
-        autoStartMachines={autoStartMachines}
-        onToggleAutoStart={setAutoStartMachines}
         onAddDevice={() => setIsAddDeviceOpen(true)}
         selectedNode={selectedNode}
         onOpenTerminal={handleOpenTerminal}

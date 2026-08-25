@@ -16,6 +16,7 @@ type Node struct {
 	Name       string                 `json:"name"`
 	Status     string                 `json:"status,omitempty"` // "running", "stopped", "error"
 	Power      string                 `json:"power,omitempty"`  // "on", "off"
+	AutoStart  *bool                  `json:"autoStart,omitempty"`
 	X          float64                `json:"x"`
 	Y          float64                `json:"y"`
 	Memory     int                    `json:"memory,omitempty"`

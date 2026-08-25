@@ -295,20 +295,11 @@ func (s *Server) handleStartProjectSimulation(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	var req struct {
-		StartNodes *bool `json:"startNodes"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	startNodes := true
-	if req.StartNodes != nil {
-		startNodes = *req.StartNodes
-	}
-
-	logger.Log.Info("REST API: Start project simulation", "id", id, "startNodes", startNodes)
-	s.hub.startProjectSimulation(id, startNodes)
+	logger.Log.Info("REST API: Start project simulation", "id", id)
+	s.hub.startProjectSimulation(id)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "running", "projectId": id, "startNodes": startNodes})
+	json.NewEncoder(w).Encode(map[string]string{"status": "running", "projectId": id})
 }
 
 func (s *Server) handleStartSingleNode(w http.ResponseWriter, r *http.Request) {

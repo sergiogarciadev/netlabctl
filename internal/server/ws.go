@@ -234,8 +234,7 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 
 	case model.MsgTypeStartSimulation:
 		var payload struct {
-			ProjectID  string `json:"projectId"`
-			StartNodes *bool  `json:"startNodes,omitempty"`
+			ProjectID string `json:"projectId"`
 		}
 		_ = json.Unmarshal(msg.Data, &payload)
 		projectID := payload.ProjectID
@@ -245,12 +244,8 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 		if projectID == "" {
 			projectID = "default"
 		}
-		startNodes := true
-		if payload.StartNodes != nil {
-			startNodes = *payload.StartNodes
-		}
-		logger.Log.Info("WS Command: Start simulation", "project", projectID, "startNodes", startNodes)
-		c.hub.startProjectSimulation(projectID, startNodes)
+		logger.Log.Info("WS Command: Start simulation", "project", projectID)
+		c.hub.startProjectSimulation(projectID)
 
 	case model.MsgTypeStopSimulation:
 		var payload struct {
@@ -336,7 +331,7 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 	}
 }
 
-func (h *WSHub) startProjectSimulation(projectID string, startNodes bool) {
+func (h *WSHub) startProjectSimulation(projectID string) {
 	top, err := h.storage.GetProject(projectID)
 	if err != nil {
 		logger.Log.Error("Failed to get project for simulation start", "error", err)
@@ -378,39 +373,43 @@ func (h *WSHub) startProjectSimulation(projectID string, startNodes bool) {
 		}
 	}
 
-	// 3. Launch QEMU Node Instances if startNodes is true
-	if startNodes {
-		for _, node := range top.Nodes {
+	// 3. Launch QEMU Node Instances if per-node AutoStart is enabled (default true)
+	startedNodes := make(map[string]bool)
+	for i := range top.Nodes {
+		node := &top.Nodes[i]
+		shouldAutoStart := node.AutoStart == nil || *node.AutoStart
+
+		if shouldAutoStart {
 			tmpl, tmplDir, _ := h.storage.GetTemplate(node.TemplateID)
-			_, err := h.qemuMgr.StartNode(projectID, &node, tmplDir, tmpl, portAddrs)
+			_, err := h.qemuMgr.StartNode(projectID, node, tmplDir, tmpl, portAddrs)
 			if err != nil {
 				logger.Log.Error("Failed to start node instance", "nodeID", node.ID, "error", err)
+			} else {
+				startedNodes[node.ID] = true
+				node.Status = "running"
+				node.Power = "on"
 			}
+		} else {
+			node.Status = "stopped"
+			node.Power = "off"
 		}
+	}
 
-		go func() {
-			time.Sleep(1 * time.Second) // Give QEMU instances 1s to open monitor sockets
-			for _, node := range top.Nodes {
+	go func() {
+		time.Sleep(1 * time.Second) // Give QEMU instances 1s to open monitor sockets
+		for _, node := range top.Nodes {
+			if startedNodes[node.ID] {
 				for i, port := range node.Ports {
 					devID := fmt.Sprintf("eth%d", i)
 					isConn := connectedPorts[port.ID]
 					_ = h.qemuMgr.SetPortLinkStatus(projectID, node.ID, devID, isConn)
 				}
 			}
-		}()
-	}
-
-	// 4. Update and save project simulation status & node power states
-	top.SimulationStatus = "running"
-	for i := range top.Nodes {
-		if startNodes {
-			top.Nodes[i].Status = "running"
-			top.Nodes[i].Power = "on"
-		} else {
-			top.Nodes[i].Status = "stopped"
-			top.Nodes[i].Power = "off"
 		}
-	}
+	}()
+
+	// 4. Update and save project simulation status
+	top.SimulationStatus = "running"
 	_ = h.storage.SaveProject(top)
 
 	h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
@@ -425,7 +424,7 @@ func (h *WSHub) startSingleNode(projectID string, nodeID string) {
 	}
 
 	if top.SimulationStatus != "running" {
-		h.startProjectSimulation(projectID, false)
+		h.startProjectSimulation(projectID)
 		top, _ = h.storage.GetProject(projectID)
 	}
 

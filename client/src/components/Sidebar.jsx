@@ -304,6 +304,40 @@ export function Sidebar({
       {/* Tab 1: System & Specs */}
       {activeTab === "hardware" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {/* Auto-start Setting */}
+          <div
+            style={{
+              background: "var(--bg-card)",
+              padding: "10px",
+              borderRadius: "6px",
+              border: "1px solid var(--border-color)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "var(--text-main)" }}>
+                Auto-start with Lab
+              </div>
+              <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
+                Boot machine automatically when Lab starts
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={selectedNode.autoStart !== false}
+              onChange={(e) =>
+                onUpdateNode({
+                  ...selectedNode,
+                  autoStart: e.target.checked,
+                })
+              }
+              style={{ cursor: "pointer", accentColor: "#38bdf8", width: "16px", height: "16px" }}
+              title="When enabled, starting simulation automatically boots this machine instance."
+            />
+          </div>
+
           <div
             style={{
               background: "var(--bg-card)",
