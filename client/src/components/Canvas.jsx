@@ -1141,12 +1141,129 @@ function updateWirePositions(
   }
 }
 
+function getStylePropValue(elem, propName) {
+  const styleAttr = elem.getAttribute("style");
+  if (!styleAttr) return null;
+  const match = styleAttr.match(new RegExp(`(?:^|;|\\s)${propName}\\s*:\\s*([^;]+)`, "i"));
+  return match ? match[1].trim() : null;
+}
+
+function preprocessSVGString(svgStr) {
+  if (!svgStr || typeof DOMParser === "undefined") return svgStr;
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgStr, "image/svg+xml");
+    const svgElem = doc.querySelector("svg");
+    if (!svgElem) return svgStr;
+
+    // 1. Resolve and expand <use> elements directly in DOM tree
+    const useElems = Array.from(doc.querySelectorAll("use"));
+    for (const use of useElems) {
+      const href = use.getAttribute("href") || use.getAttribute("xlink:href");
+      if (href) {
+        const targetId = href.replace(/^#/, "");
+        const targetElem = doc.getElementById(targetId);
+        if (targetElem) {
+          const clone = targetElem.cloneNode(true);
+          clone.removeAttribute("id");
+
+          const useX = use.getAttribute("x") || "0";
+          const useY = use.getAttribute("y") || "0";
+          const useTransform = use.getAttribute("transform") || "";
+          const useClass = use.getAttribute("class") || "";
+          const useStyle = use.getAttribute("style") || "";
+
+          let combinedTransform = "";
+          if (useX !== "0" || useY !== "0") {
+            combinedTransform = `translate(${useX} ${useY})`;
+          }
+          if (useTransform) {
+            combinedTransform = `${combinedTransform} ${useTransform}`.trim();
+          }
+
+          if (combinedTransform) {
+            const existingTransform = clone.getAttribute("transform") || "";
+            clone.setAttribute("transform", `${existingTransform} ${combinedTransform}`.trim());
+          }
+
+          if (useClass) {
+            const existingClass = clone.getAttribute("class") || "";
+            clone.setAttribute("class", `${existingClass} ${useClass}`.trim());
+          }
+
+          if (useStyle) {
+            const existingStyle = clone.getAttribute("style") || "";
+            clone.setAttribute("style", `${existingStyle};${useStyle}`);
+          }
+
+          if (use.id) {
+            clone.id = use.id;
+          }
+
+          use.parentNode.replaceChild(clone, use);
+        }
+      }
+    }
+
+    // 2. Resolve inherited styles and text alignment on <text> and <tspan> elements
+    const textElems = Array.from(doc.querySelectorAll("text"));
+    for (const textNode of textElems) {
+      const textAnchor =
+        textNode.getAttribute("text-anchor") || getStylePropValue(textNode, "text-anchor");
+      const dominantBaseline =
+        textNode.getAttribute("dominant-baseline") ||
+        textNode.getAttribute("alignment-baseline") ||
+        getStylePropValue(textNode, "dominant-baseline") ||
+        getStylePropValue(textNode, "alignment-baseline");
+      const fontFamily =
+        textNode.getAttribute("font-family") || getStylePropValue(textNode, "font-family");
+      const fontSize =
+        textNode.getAttribute("font-size") || getStylePropValue(textNode, "font-size");
+      const fontWeight =
+        textNode.getAttribute("font-weight") || getStylePropValue(textNode, "font-weight");
+      const fontStyle =
+        textNode.getAttribute("font-style") || getStylePropValue(textNode, "font-style");
+      const fill = textNode.getAttribute("fill") || getStylePropValue(textNode, "fill");
+
+      if (textAnchor) textNode.setAttribute("text-anchor", textAnchor);
+      if (dominantBaseline) textNode.setAttribute("dominant-baseline", dominantBaseline);
+      if (fontFamily) textNode.setAttribute("font-family", fontFamily);
+      if (fontSize) textNode.setAttribute("font-size", fontSize);
+      if (fontWeight) textNode.setAttribute("font-weight", fontWeight);
+      if (fontStyle) textNode.setAttribute("font-style", fontStyle);
+      if (fill) textNode.setAttribute("fill", fill);
+
+      const tspans = Array.from(textNode.querySelectorAll("tspan"));
+      for (const tspan of tspans) {
+        if (!tspan.getAttribute("font-family") && fontFamily)
+          tspan.setAttribute("font-family", fontFamily);
+        if (!tspan.getAttribute("font-size") && fontSize) tspan.setAttribute("font-size", fontSize);
+        if (!tspan.getAttribute("font-weight") && fontWeight)
+          tspan.setAttribute("font-weight", fontWeight);
+        if (!tspan.getAttribute("font-style") && fontStyle)
+          tspan.setAttribute("font-style", fontStyle);
+        if (!tspan.getAttribute("fill") && fill) tspan.setAttribute("fill", fill);
+        if (!tspan.getAttribute("text-anchor") && textAnchor)
+          tspan.setAttribute("text-anchor", textAnchor);
+      }
+    }
+
+    const serializer = new XMLSerializer();
+    return serializer.serializeToString(doc);
+  } catch (err) {
+    console.warn("[NETLAB-SVG-PREPROCESS] Error preprocessing SVG DOM:", err);
+    return svgStr;
+  }
+}
+
 async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) {
   let svgObjects = [];
 
   if (svgStr) {
     try {
-      const parsed = await loadSVGFromString(svgStr);
+      const processedStr = preprocessSVGString(svgStr);
+      const parsed = await loadSVGFromString(processedStr);
       if (parsed.objects && parsed.objects.length > 0) {
         svgObjects = parsed.objects.filter((o) => o !== null);
       }
@@ -1214,6 +1331,30 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
       elemId === "status-power" ||
       elemId === "device-power" ||
       elemId.includes("power");
+
+    // Preserve and apply text alignment and font formatting on Fabric Text objects
+    if (obj.type === "text" || obj.type === "i-text" || obj.type === "textbox") {
+      const rawElem = obj._element || obj.element;
+      const textAnchor = obj.textAnchor || rawElem?.getAttribute?.("text-anchor");
+      const dominantBaseline =
+        obj.dominantBaseline ||
+        rawElem?.getAttribute?.("dominant-baseline") ||
+        rawElem?.getAttribute?.("alignment-baseline");
+
+      if (textAnchor === "middle") {
+        obj.set({ originX: "center", textAlign: "center" });
+      } else if (textAnchor === "end" || textAnchor === "right") {
+        obj.set({ originX: "right", textAlign: "right" });
+      } else if (textAnchor === "start" || textAnchor === "left") {
+        obj.set({ originX: "left", textAlign: "left" });
+      }
+
+      if (dominantBaseline === "middle" || dominantBaseline === "central") {
+        obj.set({ originY: "center" });
+      } else if (dominantBaseline === "hanging" || dominantBaseline === "text-before-edge") {
+        obj.set({ originY: "top" });
+      }
+    }
 
     if (isNameElem && typeof obj.set === "function") {
       obj.set({ text: node.name });
