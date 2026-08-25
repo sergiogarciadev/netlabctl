@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"embed"
 	"io/fs"
 	"net/http"
@@ -26,6 +27,7 @@ type Server struct {
 	hub        *WSHub
 	serialHubs *SerialHubManager
 	mux        *http.ServeMux
+	httpServer *http.Server
 }
 
 // NewServer initializes a new netlabctl HTTP and WS server instance.
@@ -115,8 +117,42 @@ func (s *Server) routes() {
 func (s *Server) Start() error {
 	go s.hub.Run()
 
+	s.httpServer = &http.Server{
+		Addr:    s.addr,
+		Handler: s.mux,
+	}
+
 	logger.Log.Info("Starting netlabctl server", "addr", s.addr)
-	return http.ListenAndServe(s.addr, s.mux)
+	err := s.httpServer.ListenAndServe()
+	if err == http.ErrServerClosed {
+		return nil
+	}
+	return err
+}
+
+// Shutdown gracefully shuts down the HTTP server, network bridges, and QEMU instances.
+func (s *Server) Shutdown(ctx context.Context) error {
+	logger.Log.Info("Gracefully shutting down netlabctl server...")
+
+	var httpErr error
+	if s.httpServer != nil {
+		httpErr = s.httpServer.Shutdown(ctx)
+	}
+
+	if s.netMgr != nil {
+		s.netMgr.StopAllProxies()
+	}
+
+	if s.qemuMgr != nil {
+		s.qemuMgr.StopAllNodes()
+	}
+
+	if s.serialHubs != nil {
+		s.serialHubs.CloseAll()
+	}
+
+	logger.Log.Info("Netlabctl server shutdown complete")
+	return httpErr
 }
 
 // Router returns the underlying http.Handler for testing.

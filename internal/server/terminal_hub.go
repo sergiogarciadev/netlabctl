@@ -79,6 +79,22 @@ func (m *SerialHubManager) RemoveHub(projectID, nodeID string) {
 	}
 }
 
+func (m *SerialHubManager) CloseAll() {
+	m.mu.Lock()
+	hubs := make([]*NodeSerialHub, 0, len(m.hubs))
+	for key, hub := range m.hubs {
+		hubs = append(hubs, hub)
+		delete(m.hubs, key)
+	}
+	m.mu.Unlock()
+
+	for _, hub := range hubs {
+		if hub != nil {
+			hub.Close()
+		}
+	}
+}
+
 func (h *NodeSerialHub) Close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
