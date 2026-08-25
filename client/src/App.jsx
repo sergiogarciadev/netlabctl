@@ -1,3 +1,4 @@
+import { AlertCircle, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddDeviceModal } from "./components/AddDeviceModal";
 import { Canvas } from "./components/Canvas";
@@ -39,7 +40,15 @@ export function App() {
   const [terminalOrder, setTerminalOrder] = useState([]);
   const [activeTool, setActiveTool] = useState("select");
   const [isRunning, setIsRunning] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const showError = useCallback((msg) => {
+    const text = typeof msg === "string" ? msg : msg?.message || "An unexpected error occurred.";
+    setErrorMessage(text);
+    setTimeout(() => {
+      setErrorMessage((curr) => (curr === text ? null : curr));
+    }, 6000);
+  }, []);
   const [config, setConfig] = useState(() => {
     try {
       const saved = localStorage.getItem("netlabctl_config");
@@ -357,9 +366,10 @@ export function App() {
       await startProjectSimulation(projectRef.current.id);
     } catch (err) {
       console.error("[NETLAB-APP-DEBUG] Failed to start simulation via REST:", err);
+      showError(err.message || "Failed to start simulation.");
     }
     wsClientRef.current?.startSimulation(projectRef.current.id);
-  }, []);
+  }, [showError]);
 
   const handleStopLab = useCallback(async () => {
     setIsRunning(false);
@@ -367,66 +377,87 @@ export function App() {
       await stopProjectSimulation(projectRef.current.id);
     } catch (err) {
       console.error("[NETLAB-APP-DEBUG] Failed to stop simulation via REST:", err);
+      showError(err.message || "Failed to stop simulation.");
     }
     wsClientRef.current?.stopSimulation(projectRef.current.id);
-  }, []);
+  }, [showError]);
 
-  const handleStartNode = useCallback(async (nodeId) => {
-    const proj = projectRef.current;
-    try {
-      await startNodePower(proj.id, nodeId);
-    } catch (err) {
-      console.error("[NETLAB-APP-DEBUG] Failed to start node power via REST:", err);
-    }
-    wsClientRef.current?.startNode(proj.id, nodeId);
-  }, []);
+  const handleStartNode = useCallback(
+    async (nodeId) => {
+      const proj = projectRef.current;
+      try {
+        await startNodePower(proj.id, nodeId);
+      } catch (err) {
+        console.error("[NETLAB-APP-DEBUG] Failed to start node power via REST:", err);
+        showError(err.message || `Failed to start node ${nodeId}.`);
+      }
+      wsClientRef.current?.startNode(proj.id, nodeId);
+    },
+    [showError],
+  );
 
-  const handleShutdownNode = useCallback(async (nodeId) => {
-    const proj = projectRef.current;
-    try {
-      await shutdownNodePower(proj.id, nodeId);
-    } catch (err) {
-      console.error("[NETLAB-APP-DEBUG] Failed to shutdown node via REST:", err);
-    }
-    wsClientRef.current?.shutdownNode(proj.id, nodeId);
-  }, []);
+  const handleShutdownNode = useCallback(
+    async (nodeId) => {
+      const proj = projectRef.current;
+      try {
+        await shutdownNodePower(proj.id, nodeId);
+      } catch (err) {
+        console.error("[NETLAB-APP-DEBUG] Failed to shutdown node via REST:", err);
+        showError(err.message || `Failed to shutdown node ${nodeId}.`);
+      }
+      wsClientRef.current?.shutdownNode(proj.id, nodeId);
+    },
+    [showError],
+  );
 
-  const handleResetNode = useCallback(async (nodeId) => {
-    const proj = projectRef.current;
-    try {
-      await resetNodePower(proj.id, nodeId);
-    } catch (err) {
-      console.error("[NETLAB-APP-DEBUG] Failed to reset node via REST:", err);
-    }
-    wsClientRef.current?.resetNode(proj.id, nodeId);
-  }, []);
+  const handleResetNode = useCallback(
+    async (nodeId) => {
+      const proj = projectRef.current;
+      try {
+        await resetNodePower(proj.id, nodeId);
+      } catch (err) {
+        console.error("[NETLAB-APP-DEBUG] Failed to reset node via REST:", err);
+        showError(err.message || `Failed to reset node ${nodeId}.`);
+      }
+      wsClientRef.current?.resetNode(proj.id, nodeId);
+    },
+    [showError],
+  );
 
-  const handleStopNode = useCallback(async (nodeId) => {
-    const proj = projectRef.current;
-    try {
-      await stopNodePower(proj.id, nodeId);
-    } catch (err) {
-      console.error("[NETLAB-APP-DEBUG] Failed to force stop node via REST:", err);
-    }
-    wsClientRef.current?.stopNode(proj.id, nodeId);
-  }, []);
+  const handleStopNode = useCallback(
+    async (nodeId) => {
+      const proj = projectRef.current;
+      try {
+        await stopNodePower(proj.id, nodeId);
+      } catch (err) {
+        console.error("[NETLAB-APP-DEBUG] Failed to force stop node via REST:", err);
+        showError(err.message || `Failed to stop node ${nodeId}.`);
+      }
+      wsClientRef.current?.stopNode(proj.id, nodeId);
+    },
+    [showError],
+  );
 
-  const handleRecreateNodeDisk = useCallback(async (nodeId) => {
-    const proj = projectRef.current;
-    if (
-      !confirm(
-        "Are you sure you want to recreate the machine disk? All saved changes on this instance will be lost.",
-      )
-    ) {
-      return;
-    }
-    try {
-      await recreateNodeDisk(proj.id, nodeId);
-    } catch (err) {
-      console.error("[NETLAB-APP-DEBUG] Failed to recreate node disk via REST:", err);
-    }
-    wsClientRef.current?.recreateNodeDisk(proj.id, nodeId);
-  }, []);
+  const handleRecreateNodeDisk = useCallback(
+    async (nodeId) => {
+      const proj = projectRef.current;
+      if (
+        !confirm(
+          "Are you sure you want to recreate the machine disk? All saved changes on this instance will be lost.",
+        )
+      ) {
+        return;
+      }
+      try {
+        await recreateNodeDisk(proj.id, nodeId);
+      } catch (err) {
+        console.error("[NETLAB-APP-DEBUG] Failed to recreate node disk via REST:", err);
+        showError(err.message || `Failed to recreate disk for node ${nodeId}.`);
+      }
+      wsClientRef.current?.recreateNodeDisk(proj.id, nodeId);
+    },
+    [showError],
+  );
 
   const handleAddNodeFromTemplate = useCallback(
     async (tmpl) => {
@@ -444,9 +475,10 @@ export function App() {
         setSelectedNode(newNode);
       } catch (err) {
         console.error("[NETLAB-APP-DEBUG] Failed to add node from template:", err);
+        showError(err.message || `Failed to add device ${tmpl.name}.`);
       }
     },
-    [commitProjectUpdate],
+    [commitProjectUpdate, showError],
   );
 
   const handleAddWire = useCallback(
@@ -723,6 +755,45 @@ export function App() {
               </>
             );
           })()}
+        {errorMessage && (
+          <div
+            style={{
+              position: "fixed",
+              top: "70px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "rgba(239, 68, 68, 0.95)",
+              backdropFilter: "blur(8px)",
+              color: "#ffffff",
+              padding: "10px 18px",
+              borderRadius: "8px",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+              zIndex: 99999,
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              fontSize: "0.88rem",
+              fontWeight: 500,
+            }}
+          >
+            <AlertCircle size={18} />
+            <span>{errorMessage}</span>
+            <button
+              type="button"
+              onClick={() => setErrorMessage(null)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#fff",
+                cursor: "pointer",
+                marginLeft: "10px",
+                padding: "2px",
+              }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
