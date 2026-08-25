@@ -671,7 +671,7 @@ export function Canvas({
     if (!canvas || canvas.isDisposed) return;
 
     let isCancelled = false;
-    canvas.defaultCursor = activeTool === "wire" ? "crosshair" : "default";
+    canvas.defaultCursor = activeToolRef.current === "wire" ? "crosshair" : "default";
     const nodeGroupsMap = new Map();
 
     const renderAll = async () => {
@@ -699,7 +699,13 @@ export function Canvas({
         const tmpl = templates.find((t) => t.id === node.templateId);
         const svgStr = tmpl ? svgCache.get(tmpl.id) || "" : "";
 
-        const nodeGroup = await createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool);
+        const nodeGroup = await createExactSVGDeviceGroup(
+          node,
+          tmpl,
+          svgStr,
+          wires,
+          activeToolRef.current,
+        );
         if (isCancelled || canvas.isDisposed) return;
 
         nodeGroup.lastValidLeft = node.x;
@@ -760,7 +766,22 @@ export function Canvas({
     return () => {
       isCancelled = true;
     };
-  }, [nodes, wires, templates, activeTool]);
+  }, [nodes, wires, templates]);
+
+  // Lightweight Tool Switching — Toggles selectable/cursor properties without clearing the canvas!
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || canvas.isDisposed) return;
+
+    canvas.defaultCursor = activeTool === "wire" ? "crosshair" : "default";
+    canvas.selection = activeTool === "select";
+
+    const allNodeGroups = canvas.getObjects().filter((obj) => obj.isNodeGroup);
+    for (const group of allNodeGroups) {
+      group.selectable = activeTool === "select";
+    }
+    canvas.requestRenderAll();
+  }, [activeTool]);
 
   return (
     <div className="canvas-wrapper" ref={containerRef}>
