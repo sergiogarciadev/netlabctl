@@ -5,6 +5,7 @@ export function AddDeviceModal({ templates, isOpen, onClose, onSelectTemplate })
 
   return (
     <div
+      className="modal-overlay"
       style={{
         position: "fixed",
         top: 0,
@@ -16,7 +17,7 @@ export function AddDeviceModal({ templates, isOpen, onClose, onSelectTemplate })
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 100,
+        zIndex: 10000,
       }}
     >
       <div
