@@ -322,6 +322,20 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 			c.hub.stopSingleNode(projectID, payload.NodeID)
 		}
 
+	case model.MsgTypeRecreateNodeDisk:
+		var payload model.NodeActionPayload
+		if err := json.Unmarshal(msg.Data, &payload); err == nil && payload.NodeID != "" {
+			projectID := payload.ProjectID
+			if projectID == "" {
+				projectID = c.projectID
+			}
+			if projectID == "" {
+				projectID = "default"
+			}
+			logger.Log.Info("WS Command: Recreate node disk", "node", payload.NodeID, "project", projectID)
+			_ = c.hub.recreateSingleNodeDisk(projectID, payload.NodeID)
+		}
+
 	case model.MsgTypeSetWireCondition:
 		var payload model.SetWireConditionPayload
 		if err := json.Unmarshal(msg.Data, &payload); err == nil {
@@ -542,6 +556,31 @@ func (h *WSHub) stopSingleNode(projectID string, nodeID string) {
 		_ = h.storage.SaveProject(top)
 		h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
 	}
+}
+
+func (h *WSHub) recreateSingleNodeDisk(projectID string, nodeID string) error {
+	top, err := h.storage.GetProject(projectID)
+	if err != nil {
+		return err
+	}
+
+	for i := range top.Nodes {
+		if top.Nodes[i].ID == nodeID {
+			node := &top.Nodes[i]
+			tmpl, tmplDir, _ := h.storage.GetTemplate(node.TemplateID)
+			_, err := h.qemuMgr.RecreateNodeDisk(projectID, node, tmplDir, tmpl)
+			if err != nil {
+				logger.Log.Error("Failed to recreate disk for node", "nodeID", nodeID, "error", err)
+				return err
+			}
+			node.Status = "stopped"
+			node.Power = "off"
+			_ = h.storage.SaveProject(top)
+			h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
+			return nil
+		}
+	}
+	return fmt.Errorf("node not found: %s", nodeID)
 }
 
 func (h *WSHub) handleNodeExit(projectID, nodeID string) {

@@ -96,6 +96,19 @@ func (m *Manager) PrepareNodeDisk(projectID string, node *model.Node, tmplDir st
 	return diskPath, nil
 }
 
+// RecreateNodeDisk stops the node if running, deletes old disk overlay, and recreates a fresh qcow2 overlay.
+func (m *Manager) RecreateNodeDisk(projectID string, node *model.Node, tmplDir string, tmpl *model.MachineTemplate) (string, error) {
+	_ = m.StopNode(node.ID)
+
+	nDir := m.NodeDir(projectID, node.ID)
+	diskPath := filepath.Join(nDir, "disk.qcow2")
+	_ = os.Remove(diskPath)
+	_ = os.Remove(filepath.Join(nDir, "cloud-init.iso"))
+
+	logger.Log.Info("Recreating disk overlay for node", "nodeID", node.ID, "projectID", projectID)
+	return m.PrepareNodeDisk(projectID, node, tmplDir, tmpl)
+}
+
 // StartNode launches a QEMU process for the specified node with managed network sockets and monitor socket.
 func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, tmpl *model.MachineTemplate, portAddrs map[string]string) (*NodeInstance, error) {
 	m.mu.Lock()

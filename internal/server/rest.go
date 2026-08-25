@@ -362,6 +362,25 @@ func (s *Server) handleStopSingleNode(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "stopped", "nodeId": nodeID})
 }
 
+func (s *Server) handleRecreateSingleNodeDisk(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	nodeID := r.PathValue("nodeId")
+	if id == "" || nodeID == "" {
+		http.Error(w, "Missing project id or node id", http.StatusBadRequest)
+		return
+	}
+
+	logger.Log.Info("REST API: Recreate single node disk", "id", id, "nodeId", nodeID)
+	err := s.hub.recreateSingleNodeDisk(id, nodeID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "disk_recreated", "nodeId": nodeID})
+}
+
 func (s *Server) handleStopProjectSimulation(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {

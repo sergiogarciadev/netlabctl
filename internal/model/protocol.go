@@ -11,6 +11,7 @@ const (
 	MsgTypeShutdownNode     = "shutdown_node"
 	MsgTypeResetNode        = "reset_node"
 	MsgTypeStopNode         = "stop_node"
+	MsgTypeRecreateNodeDisk = "recreate_node_disk"
 	MsgTypeTerminalInput    = "terminal_input"
 	MsgTypeSetWireCondition = "set_wire_condition"
 	MsgTypeEnableTZSP       = "enable_tzsp"

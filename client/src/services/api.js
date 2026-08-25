@@ -120,6 +120,14 @@ export async function stopNodePower(projectId, nodeId) {
   return res.json();
 }
 
+export async function recreateNodeDisk(projectId, nodeId) {
+  const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}/recreate-disk`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`Failed to recreate disk for node ${nodeId}`);
+  return res.json();
+}
+
 export class WSClient {
   constructor(onMessage) {
     this.onMessage = onMessage;
@@ -198,6 +206,10 @@ export class WSClient {
 
   stopNode(projectId, nodeId) {
     this.send("stop_node", { projectId, nodeId });
+  }
+
+  recreateNodeDisk(projectId, nodeId) {
+    this.send("recreate_node_disk", { projectId, nodeId });
   }
 
   setWireCondition(wireId, conditions) {

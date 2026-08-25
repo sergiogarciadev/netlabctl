@@ -9,6 +9,7 @@ import {
   Power,
   Radio,
   RefreshCw,
+  RotateCcw,
   Server,
   Square,
   Terminal as TerminalIcon,
@@ -31,6 +32,7 @@ export function Sidebar({
   onShutdownNode,
   onResetNode,
   onStopNode,
+  onRecreateNodeDisk,
 }) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [name, setName] = useState("");
@@ -1144,13 +1146,45 @@ export function Sidebar({
         >
           <TerminalIcon size={16} /> Open Serial Terminal
         </button>
-        <button
-          type="button"
-          className="btn btn-danger"
-          onClick={() => onDeleteNode(selectedNode.id)}
-        >
-          <Trash2 size={16} /> Remove Device
-        </button>
+
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            type="button"
+            className="btn"
+            style={{
+              flex: 1,
+              background: "rgba(245, 158, 11, 0.15)",
+              border: "1px solid rgba(245, 158, 11, 0.4)",
+              color: "#f59e0b",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              fontSize: "0.8rem",
+            }}
+            onClick={() => onRecreateNodeDisk?.(selectedNode.id)}
+            title="Wipe machine overlay and recreate fresh disk from template defaults"
+          >
+            <RotateCcw size={15} /> Recreate Disk
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-danger"
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              fontSize: "0.8rem",
+            }}
+            onClick={() => onDeleteNode(selectedNode.id)}
+            title="Delete this device from the network topology"
+          >
+            <Trash2 size={15} /> Remove Device
+          </button>
+        </div>
       </div>
     </div>
   );

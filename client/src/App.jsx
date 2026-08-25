@@ -14,6 +14,7 @@ import {
   fetchProject,
   fetchProjects,
   fetchTemplates,
+  recreateNodeDisk,
   resetNodePower,
   shutdownNodePower,
   startNodePower,
@@ -390,6 +391,23 @@ export function App() {
     wsClientRef.current?.stopNode(proj.id, nodeId);
   }, []);
 
+  const handleRecreateNodeDisk = useCallback(async (nodeId) => {
+    const proj = projectRef.current;
+    if (
+      !confirm(
+        "Are you sure you want to recreate the machine disk? All saved changes on this instance will be lost.",
+      )
+    ) {
+      return;
+    }
+    try {
+      await recreateNodeDisk(proj.id, nodeId);
+    } catch (err) {
+      console.error("[NETLAB-APP-DEBUG] Failed to recreate node disk via REST:", err);
+    }
+    wsClientRef.current?.recreateNodeDisk(proj.id, nodeId);
+  }, []);
+
   const handleAddNodeFromTemplate = useCallback(
     async (tmpl) => {
       try {
@@ -579,6 +597,7 @@ export function App() {
           onShutdownNode={handleShutdownNode}
           onResetNode={handleResetNode}
           onStopNode={handleStopNode}
+          onRecreateNodeDisk={handleRecreateNodeDisk}
         />
 
         <AddDeviceModal
