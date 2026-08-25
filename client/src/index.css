@@ -142,7 +142,7 @@ html,
   position: absolute;
   top: 52px;
   right: 0;
-  width: 340px;
+  width: 430px;
   height: calc(100vh - 52px);
   background: rgba(19, 27, 46, 0.95);
   backdrop-filter: blur(16px);

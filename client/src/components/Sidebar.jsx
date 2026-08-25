@@ -249,7 +249,7 @@ export function Sidebar({
           alignItems: "center",
           gap: "6px",
           marginBottom: "14px",
-          flexWrap: "wrap",
+          flexWrap: "nowrap",
         }}
       >
         {selectedNode.power !== "on" && selectedNode.status !== "running" ? (
@@ -262,6 +262,7 @@ export function Sidebar({
               display: "flex",
               alignItems: "center",
               gap: "4px",
+              whiteSpace: "nowrap",
             }}
             onClick={() => onStartNode?.(selectedNode.id)}
             title="Power On / Start Machine Instance"
@@ -279,6 +280,9 @@ export function Sidebar({
                 display: "flex",
                 alignItems: "center",
                 gap: "4px",
+                whiteSpace: "nowrap",
+                flex: "1 1 auto",
+                justifyContent: "center",
               }}
               onClick={() => onShutdownNode?.(selectedNode.id)}
               title="Send ACPI Shutdown Signal via QMP"
@@ -298,6 +302,9 @@ export function Sidebar({
                 background: "var(--bg-card)",
                 border: "1px solid var(--border-color)",
                 color: "#f59e0b",
+                whiteSpace: "nowrap",
+                flex: "1 1 auto",
+                justifyContent: "center",
               }}
               onClick={() => onResetNode?.(selectedNode.id)}
               title="Reset / Reboot Machine via QMP"
@@ -317,6 +324,9 @@ export function Sidebar({
                 background: "rgba(239, 68, 68, 0.1)",
                 border: "1px solid #ef444444",
                 color: "#ef4444",
+                whiteSpace: "nowrap",
+                flex: "1 1 auto",
+                justifyContent: "center",
               }}
               onClick={() => onStopNode?.(selectedNode.id)}
               title="Force Power Off Immediately"

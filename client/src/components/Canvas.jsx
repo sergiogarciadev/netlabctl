@@ -752,7 +752,7 @@ export function Canvas({
         style={{
           position: "absolute",
           bottom: "16px",
-          right: selectedNode ? "356px" : "16px",
+          right: selectedNode ? "446px" : "16px",
           transition: "right 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
           display: "flex",
           alignItems: "center",
