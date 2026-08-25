@@ -16,6 +16,7 @@ export function TerminalWindow({
 }) {
   const terminalRef = useRef(null);
   const fitAddonRef = useRef(null);
+  const [termDimensions, setTermDimensions] = useState(null);
 
   // Load layout memory per machine ID from localStorage
   const loadLayout = useCallback(() => {
@@ -212,6 +213,7 @@ export function TerminalWindow({
 
     socket.onopen = () => {
       term.writeln(`\x1b[1;32mConnected to serial console for ${nodeName}...\x1b[0m\r\n`);
+      setTermDimensions({ rows: term.rows, cols: term.cols });
       sendSizeReport(term.rows, term.cols);
     };
 
@@ -230,6 +232,7 @@ export function TerminalWindow({
     });
 
     term.onResize(({ cols, rows }) => {
+      setTermDimensions({ rows, cols });
       sendSizeReport(rows, cols);
     });
 
@@ -351,18 +354,19 @@ export function TerminalWindow({
           <span style={{ fontSize: "0.85rem", fontWeight: 600, fontFamily: "var(--font-mono)" }}>
             Serial Terminal — {node.name}
           </span>
-          {layout.isDetached && (
+          {termDimensions && (
             <span
               style={{
                 fontSize: "0.7rem",
                 padding: "2px 6px",
-                background: "rgba(56, 189, 248, 0.2)",
-                color: "#38bdf8",
+                background: "rgba(148, 163, 184, 0.15)",
+                color: "var(--text-muted)",
                 borderRadius: "4px",
                 fontWeight: 600,
+                fontFamily: "var(--font-mono)",
               }}
             >
-              Detached
+              {termDimensions.rows}×{termDimensions.cols}
             </span>
           )}
         </div>
