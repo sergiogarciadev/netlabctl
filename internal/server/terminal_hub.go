@@ -112,7 +112,7 @@ func (h *NodeSerialHub) Broadcast(data []byte) {
 
 	var deadClients []*terminalClient
 	for _, client := range clientsCopy {
-		err := client.writeMessage(websocket.TextMessage, data)
+		err := client.writeMessage(websocket.BinaryMessage, data)
 		if err != nil {
 			deadClients = append(deadClients, client)
 		}

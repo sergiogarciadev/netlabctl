@@ -226,6 +226,7 @@ export function TerminalWindow({
       const wsUrl = `${protocol}//${host}/api/v1/projects/${projectId || "default"}/nodes/${nodeId}/terminal`;
 
       socket = new WebSocket(wsUrl);
+      socket.binaryType = "arraybuffer";
 
       socket.onopen = () => {
         if (isDisposed) return;
@@ -234,8 +235,28 @@ export function TerminalWindow({
       };
 
       socket.onmessage = (event) => {
-        if (!isDisposed) {
-          term.write(event.data);
+        if (isDisposed) return;
+        try {
+          if (typeof event.data === "string") {
+            term.write(event.data);
+          } else if (event.data instanceof ArrayBuffer) {
+            term.write(new Uint8Array(event.data));
+          } else if (event.data instanceof Blob) {
+            event.data
+              .arrayBuffer()
+              .then((buf) => {
+                if (!isDisposed) {
+                  try {
+                    term.write(new Uint8Array(buf));
+                  } catch (e) {
+                    console.warn("[TERMINAL] xterm write blob failed:", e);
+                  }
+                }
+              })
+              .catch(() => {});
+          }
+        } catch (err) {
+          console.warn("[TERMINAL] Safe-caught xterm ANSI write error:", err);
         }
       };
 
@@ -269,13 +290,25 @@ export function TerminalWindow({
       sendSizeReport(rows, cols);
     });
 
+    // Register CSI window report handler safely (checking params.getItem or array indexing)
     term.parser.registerCsiHandler({ final: "t" }, (params) => {
-      if (params[0] === 18) {
+      const p0 = params.getItem ? params.getItem(0) : Array.isArray(params) ? params[0] : 0;
+      if (p0 === 18) {
         sendSizeReport(term.rows, term.cols);
         return true;
       }
-      return false;
+      return true;
     });
+
+    // Safely absorb unhandled Operating System Commands (OSC 0, 1, 2, 4, 10, 11, 12, 52, 104, 110, 111, 112)
+    const oscIds = [0, 1, 2, 4, 10, 11, 12, 52, 104, 110, 111, 112];
+    for (const oscId of oscIds) {
+      try {
+        term.parser.registerOscHandler(oscId, () => true);
+      } catch (e) {
+        // ignore
+      }
+    }
 
     const handleResize = () => {
       fitAddon.fit();
