@@ -281,10 +281,26 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nodeID := fmt.Sprintf("node-%d", len(top.Nodes)+1)
+	existingIDs := make(map[string]bool)
+	existingNames := make(map[string]bool)
+	for _, n := range top.Nodes {
+		existingIDs[n.ID] = true
+		existingNames[n.Name] = true
+	}
+
+	nextNum := 1
+	for existingIDs[fmt.Sprintf("node-%d", nextNum)] {
+		nextNum++
+	}
+	nodeID := fmt.Sprintf("node-%d", nextNum)
+
 	nodeName := req.Name
 	if nodeName == "" {
-		nodeName = fmt.Sprintf("%s-%d", tmpl.Name, len(top.Nodes)+1)
+		nameNum := 1
+		for existingNames[fmt.Sprintf("%s-%d", tmpl.Name, nameNum)] {
+			nameNum++
+		}
+		nodeName = fmt.Sprintf("%s-%d", tmpl.Name, nameNum)
 	}
 
 	var ports []model.NodePort

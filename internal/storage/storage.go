@@ -301,11 +301,19 @@ func (s *Storage) GetProject(id string) (*model.Topology, error) {
 		return nil, fmt.Errorf("failed to parse topology.json for project %s: %w", id, err)
 	}
 
+	if model.SanitizeTopologyNodeIDs(&top) {
+		logger.Log.Warn("Repaired duplicate node IDs in topology", "projectID", id)
+		_ = s.SaveProject(&top)
+	}
+
 	return &top, nil
 }
 
 // SaveProject writes a project's topology.json.
 func (s *Storage) SaveProject(top *model.Topology) error {
+	if top != nil {
+		_ = model.SanitizeTopologyNodeIDs(top)
+	}
 	pDir := s.ProjectDir(top.ID)
 	if err := os.MkdirAll(pDir, 0755); err != nil {
 		return fmt.Errorf("failed to create project dir: %w", err)

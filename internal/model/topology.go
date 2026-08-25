@@ -1,5 +1,7 @@
 package model
 
+import "fmt"
+
 // NodePort represents an assigned port on an instantiated node in a topology.
 type NodePort struct {
 	ID           string `json:"id"`
@@ -55,4 +57,56 @@ type Topology struct {
 	SimulationStatus string `json:"simulationStatus,omitempty"` // "running", "stopped"
 	Nodes            []Node `json:"nodes"`
 	Wires            []Wire `json:"wires"`
+}
+
+// SanitizeTopologyNodeIDs checks for duplicate node IDs in a topology and assigns unique IDs to duplicates.
+// It returns true if any duplicate node IDs were found and repaired.
+func SanitizeTopologyNodeIDs(top *Topology) bool {
+	if top == nil || len(top.Nodes) == 0 {
+		return false
+	}
+
+	seenIDs := make(map[string]bool)
+	repaired := false
+
+	for i := range top.Nodes {
+		node := &top.Nodes[i]
+		if node.ID == "" || seenIDs[node.ID] {
+			repaired = true
+			oldID := node.ID
+
+			nextNum := 1
+			for {
+				candidate := fmt.Sprintf("node-%d", nextNum)
+				if !seenIDs[candidate] {
+					conflict := false
+					for j := range top.Nodes {
+						if j != i && top.Nodes[j].ID == candidate {
+							conflict = true
+							break
+						}
+					}
+					if !conflict {
+						node.ID = candidate
+						break
+					}
+				}
+				nextNum++
+			}
+
+			if oldID != "" {
+				for wIdx := range top.Wires {
+					if top.Wires[wIdx].SrcNodeID == oldID {
+						top.Wires[wIdx].SrcNodeID = node.ID
+					}
+					if top.Wires[wIdx].DstNodeID == oldID {
+						top.Wires[wIdx].DstNodeID = node.ID
+					}
+				}
+			}
+		}
+		seenIDs[node.ID] = true
+	}
+
+	return repaired
 }
