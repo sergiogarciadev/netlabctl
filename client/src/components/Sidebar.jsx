@@ -107,6 +107,16 @@ export function Sidebar({
     });
   };
 
+  const handlePortPropertyChange = (portId, key, value) => {
+    const updatedPorts = (selectedNode.ports || []).map((p) =>
+      p.id === portId ? { ...p, [key]: value } : p,
+    );
+    onUpdateNode({
+      ...selectedNode,
+      ports: updatedPorts,
+    });
+  };
+
   const handleSaveTzspForPort = (portId, wire) => {
     const targetAddr = tzspInputMap[portId] || "127.0.0.1:37008";
     if (wire && onUpdateWire) {
@@ -673,6 +683,184 @@ export function Sidebar({
                 >
                   MAC: {port.mac}
                 </div>
+
+                {/* Netdev Type Selector (Managed, User, Bridge, TAP) */}
+                <div
+                  style={{
+                    marginTop: "6px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <label
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--text-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      width: "100%",
+                    }}
+                  >
+                    Type:
+                    <select
+                      value={port.type || "managed"}
+                      onChange={(e) => handlePortPropertyChange(port.id, "type", e.target.value)}
+                      style={{
+                        background: "var(--bg-dark)",
+                        border: "1px solid var(--border-color)",
+                        color: "#38bdf8",
+                        fontWeight: 600,
+                        borderRadius: "4px",
+                        padding: "2px 6px",
+                        fontSize: "0.75rem",
+                        cursor: "pointer",
+                        width: "100%",
+                      }}
+                    >
+                      <option value="managed">Managed Proxy (Default)</option>
+                      <option value="user">QEMU User (SLIRP + Port Fwd)</option>
+                      <option value="bridge">QEMU Bridge (br0/virbr0)</option>
+                      <option value="tap">QEMU TAP Interface</option>
+                    </select>
+                  </label>
+                </div>
+
+                {/* Extra UI Field: User Mode Port Forwarding */}
+                {(port.type === "user" || port.type === "slirp") && (
+                  <div style={{ marginTop: "6px" }}>
+                    <label
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--text-muted)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "2px",
+                      }}
+                    >
+                      <span>Port Forwarding (hostfwd):</span>
+                      <input
+                        type="text"
+                        placeholder="tcp::2222-:22"
+                        value={port.hostFwd || ""}
+                        onChange={(e) =>
+                          handlePortPropertyChange(port.id, "hostFwd", e.target.value)
+                        }
+                        style={{
+                          background: "var(--bg-dark)",
+                          border: "1px solid var(--border-color)",
+                          color: "#10b981",
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "0.75rem",
+                          borderRadius: "4px",
+                          padding: "3px 6px",
+                          width: "100%",
+                        }}
+                        title="Format: tcp::host_port-:guest_port (e.g. tcp::2222-:22)"
+                      />
+                    </label>
+                    <div
+                      style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}
+                    >
+                      Format: <code>tcp::2222-:22</code> or <code>udp::8080-:80</code>
+                    </div>
+                  </div>
+                )}
+
+                {/* Extra UI Field: Bridge Interface Select */}
+                {port.type === "bridge" && (
+                  <div style={{ marginTop: "6px" }}>
+                    <label
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--text-muted)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "2px",
+                      }}
+                    >
+                      <span>Bridge Interface:</span>
+                      <div style={{ display: "flex", gap: "4px" }}>
+                        <select
+                          value={port.bridgeIf || "br0"}
+                          onChange={(e) =>
+                            handlePortPropertyChange(port.id, "bridgeIf", e.target.value)
+                          }
+                          style={{
+                            background: "var(--bg-dark)",
+                            border: "1px solid var(--border-color)",
+                            color: "#38bdf8",
+                            fontWeight: 600,
+                            borderRadius: "4px",
+                            padding: "2px 6px",
+                            fontSize: "0.75rem",
+                            cursor: "pointer",
+                            width: "50%",
+                          }}
+                        >
+                          <option value="br0">br0</option>
+                          <option value="virbr0">virbr0</option>
+                          <option value="docker0">docker0</option>
+                          <option value="custom">Custom...</option>
+                        </select>
+                        <input
+                          type="text"
+                          placeholder="br0"
+                          value={port.bridgeIf || "br0"}
+                          onChange={(e) =>
+                            handlePortPropertyChange(port.id, "bridgeIf", e.target.value)
+                          }
+                          style={{
+                            background: "var(--bg-dark)",
+                            border: "1px solid var(--border-color)",
+                            color: "#38bdf8",
+                            fontFamily: "var(--font-mono)",
+                            fontSize: "0.75rem",
+                            borderRadius: "4px",
+                            padding: "3px 6px",
+                            width: "50%",
+                          }}
+                          title="Host Linux network bridge interface name"
+                        />
+                      </div>
+                    </label>
+                  </div>
+                )}
+
+                {/* Extra UI Field: TAP Interface Name (Optional) */}
+                {port.type === "tap" && (
+                  <div style={{ marginTop: "6px" }}>
+                    <label
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--text-muted)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "2px",
+                      }}
+                    >
+                      <span>TAP Interface Name (Optional):</span>
+                      <input
+                        type="text"
+                        placeholder="tap0 (Auto-allocated if blank)"
+                        value={port.tapIf || ""}
+                        onChange={(e) => handlePortPropertyChange(port.id, "tapIf", e.target.value)}
+                        style={{
+                          background: "var(--bg-dark)",
+                          border: "1px solid var(--border-color)",
+                          color: "#38bdf8",
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "0.75rem",
+                          borderRadius: "4px",
+                          padding: "3px 6px",
+                          width: "100%",
+                        }}
+                        title="Optional Linux TAP interface name (e.g. tap0)"
+                      />
+                    </label>
+                  </div>
+                )}
 
                 {/* Editable Ethernet Driver Model */}
                 <div

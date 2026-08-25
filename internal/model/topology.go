@@ -5,8 +5,11 @@ type NodePort struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
 	MAC          string `json:"mac"`
-	Type         string `json:"type,omitempty"`         // e.g. "managed"
+	Type         string `json:"type,omitempty"`         // "managed", "user", "bridge", "tap"
 	NetdevDriver string `json:"netdevDriver,omitempty"` // QEMU device model e.g. "virtio-net-pci", "e1000"
+	HostFwd      string `json:"hostFwd,omitempty"`      // e.g. "tcp::2222-:22"
+	BridgeIf     string `json:"bridgeIf,omitempty"`     // e.g. "br0"
+	TapIf        string `json:"tapIf,omitempty"`        // e.g. "tap0"
 }
 
 // Node represents an instantiated machine in the simulation canvas.

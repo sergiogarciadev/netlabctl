@@ -178,10 +178,8 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		args = append(args, "-drive", fmt.Sprintf("file=%s,format=raw,media=cdrom,readonly=on", isoPath))
 	}
 
-	// Add managed port netdev sockets for ALL node ports
+	// Add network devices for node ports (supporting managed, user, bridge, and tap netdev types)
 	for i, port := range node.Ports {
-		portKey := fmt.Sprintf("%s:%s", node.ID, port.ID)
-		targetAddr, ok := portAddrs[portKey]
 		netdevID := fmt.Sprintf("net%d", i)
 		devID := fmt.Sprintf("eth%d", i)
 
@@ -190,11 +188,51 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 			devDriver = "virtio-net-pci"
 		}
 
-		if ok && targetAddr != "" {
+		pType := port.Type
+		if pType == "" {
+			pType = "managed"
+		}
+
+		switch pType {
+		case "user":
+			netdevArg := fmt.Sprintf("user,id=%s", netdevID)
+			if port.HostFwd != "" {
+				netdevArg += fmt.Sprintf(",hostfwd=%s", port.HostFwd)
+			}
 			args = append(args,
-				"-netdev", fmt.Sprintf("socket,id=%s,connect=%s", netdevID, targetAddr),
+				"-netdev", netdevArg,
 				"-device", fmt.Sprintf("%s,netdev=%s,mac=%s,id=%s", devDriver, netdevID, port.MAC, devID),
 			)
+
+		case "bridge":
+			brIf := port.BridgeIf
+			if brIf == "" {
+				brIf = "br0"
+			}
+			args = append(args,
+				"-netdev", fmt.Sprintf("bridge,id=%s,br=%s", netdevID, brIf),
+				"-device", fmt.Sprintf("%s,netdev=%s,mac=%s,id=%s", devDriver, netdevID, port.MAC, devID),
+			)
+
+		case "tap":
+			tapArg := fmt.Sprintf("tap,id=%s,script=no,downscript=no", netdevID)
+			if port.TapIf != "" {
+				tapArg += fmt.Sprintf(",ifname=%s", port.TapIf)
+			}
+			args = append(args,
+				"-netdev", tapArg,
+				"-device", fmt.Sprintf("%s,netdev=%s,mac=%s,id=%s", devDriver, netdevID, port.MAC, devID),
+			)
+
+		default: // "managed"
+			portKey := fmt.Sprintf("%s:%s", node.ID, port.ID)
+			targetAddr, ok := portAddrs[portKey]
+			if ok && targetAddr != "" {
+				args = append(args,
+					"-netdev", fmt.Sprintf("socket,id=%s,connect=%s", netdevID, targetAddr),
+					"-device", fmt.Sprintf("%s,netdev=%s,mac=%s,id=%s", devDriver, netdevID, port.MAC, devID),
+				)
+			}
 		}
 	}
 
