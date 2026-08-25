@@ -30,6 +30,8 @@ export function Toolbar({
   onRedo,
   onStart,
   onStop,
+  autoStartMachines = true,
+  onToggleAutoStart,
   onAddDevice,
   selectedNode,
   onOpenTerminal,
@@ -175,9 +177,35 @@ export function Toolbar({
 
       <div className="toolbar-controls">
         {!isRunning ? (
-          <button type="button" className="btn btn-success" onClick={onStart}>
-            <Play size={16} /> Start Lab
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <button type="button" className="btn btn-success" onClick={onStart}>
+              <Play size={16} /> Start Lab
+            </button>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                fontSize: "0.75rem",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                userSelect: "none",
+                background: "var(--bg-card)",
+                padding: "4px 8px",
+                borderRadius: "6px",
+                border: "1px solid var(--border-color)",
+              }}
+              title="When enabled, starting simulation automatically powers on all machines. When disabled, machines stay powered off until started individually."
+            >
+              <input
+                type="checkbox"
+                checked={autoStartMachines}
+                onChange={(e) => onToggleAutoStart?.(e.target.checked)}
+                style={{ cursor: "pointer", accentColor: "#38bdf8" }}
+              />
+              Auto-start machines
+            </label>
+          </div>
         ) : (
           <button type="button" className="btn btn-danger" onClick={onStop}>
             <Square size={16} /> Stop Lab

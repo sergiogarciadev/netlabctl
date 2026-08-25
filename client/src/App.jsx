@@ -13,7 +13,9 @@ import {
   fetchProject,
   fetchProjects,
   fetchTemplates,
+  startNodePower,
   startProjectSimulation,
+  stopNodePower,
   stopProjectSimulation,
   updateProject,
 } from "./services/api";
@@ -30,6 +32,9 @@ export function App() {
   const [activeTerminalNodes, setActiveTerminalNodes] = useState([]);
   const [focusedTerminalNodeId, setFocusedTerminalNodeId] = useState(null);
   const [terminalOrder, setTerminalOrder] = useState([]);
+  const [activeTool, setActiveTool] = useState("select");
+  const [isRunning, setIsRunning] = useState(false);
+  const [autoStartMachines, setAutoStartMachines] = useState(true);
 
   const handleFocusTerminal = useCallback((nodeId) => {
     setFocusedTerminalNodeId(nodeId);
@@ -49,8 +54,6 @@ export function App() {
     [handleFocusTerminal],
   );
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
-  const [activeTool, setActiveTool] = useState("select");
 
   // Stable ref for project state — allows useCallback handlers to always
   // read the latest project without needing project in their dependency arrays.
@@ -299,12 +302,12 @@ export function App() {
   const handleStartLab = useCallback(async () => {
     setIsRunning(true);
     try {
-      await startProjectSimulation(projectRef.current.id);
+      await startProjectSimulation(projectRef.current.id, autoStartMachines);
     } catch (err) {
       console.error("[NETLAB-APP-DEBUG] Failed to start simulation via REST:", err);
     }
-    wsClientRef.current?.startSimulation(projectRef.current.id);
-  }, []);
+    wsClientRef.current?.startSimulation(projectRef.current.id, autoStartMachines);
+  }, [autoStartMachines]);
 
   const handleStopLab = useCallback(async () => {
     setIsRunning(false);
@@ -314,6 +317,29 @@ export function App() {
       console.error("[NETLAB-APP-DEBUG] Failed to stop simulation via REST:", err);
     }
     wsClientRef.current?.stopSimulation(projectRef.current.id);
+  }, []);
+
+  const handleToggleNodePower = useCallback(async (nodeId) => {
+    const proj = projectRef.current;
+    const targetNode = (proj.nodes || []).find((n) => n.id === nodeId);
+    if (!targetNode) return;
+
+    const isNodeRunning = targetNode.power === "on" || targetNode.status === "running";
+    if (isNodeRunning) {
+      try {
+        await stopNodePower(proj.id, nodeId);
+      } catch (err) {
+        console.error("[NETLAB-APP-DEBUG] Failed to stop node power via REST:", err);
+      }
+      wsClientRef.current?.stopNode(proj.id, nodeId);
+    } else {
+      try {
+        await startNodePower(proj.id, nodeId);
+      } catch (err) {
+        console.error("[NETLAB-APP-DEBUG] Failed to start node power via REST:", err);
+      }
+      wsClientRef.current?.startNode(proj.id, nodeId);
+    }
   }, []);
 
   const handleAddNodeFromTemplate = useCallback(
@@ -469,6 +495,8 @@ export function App() {
         onRedo={handleRedo}
         onStart={handleStartLab}
         onStop={handleStopLab}
+        autoStartMachines={autoStartMachines}
+        onToggleAutoStart={setAutoStartMachines}
         onAddDevice={() => setIsAddDeviceOpen(true)}
         selectedNode={selectedNode}
         onOpenTerminal={handleOpenTerminal}
@@ -499,6 +527,7 @@ export function App() {
           onUpdateNode={handleUpdateNode}
           onDeleteNode={handleDeleteNode}
           onUpdateWire={handleUpdateWire}
+          onToggleNodePower={handleToggleNodePower}
         />
 
         <AddDeviceModal

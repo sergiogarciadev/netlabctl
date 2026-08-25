@@ -72,8 +72,12 @@ export async function addNodeToProject(projectId, templateId, name, x, y) {
   return res.json();
 }
 
-export async function startProjectSimulation(projectId) {
-  const res = await fetch(`/api/projects/${projectId}/start`, { method: "POST" });
+export async function startProjectSimulation(projectId, startNodes = true) {
+  const res = await fetch(`/api/projects/${projectId}/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ startNodes }),
+  });
   if (!res.ok) throw new Error("Failed to start project simulation");
   return res.json();
 }
@@ -81,6 +85,22 @@ export async function startProjectSimulation(projectId) {
 export async function stopProjectSimulation(projectId) {
   const res = await fetch(`/api/projects/${projectId}/stop`, { method: "POST" });
   if (!res.ok) throw new Error("Failed to stop project simulation");
+  return res.json();
+}
+
+export async function startNodePower(projectId, nodeId) {
+  const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}/start`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`Failed to start node ${nodeId}`);
+  return res.json();
+}
+
+export async function stopNodePower(projectId, nodeId) {
+  const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}/stop`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`Failed to stop node ${nodeId}`);
   return res.json();
 }
 
@@ -139,8 +159,9 @@ export class WSClient {
     this.send("subscribe_project", { projectId });
   }
 
-  startSimulation(projectId) {
-    this.send("start_simulation", { projectId });
+  startSimulation(projectId, startNodes = true) {
+    this.send("start_simulation", { projectId, startNodes });
+    this.send("start_project", { projectId, startNodes });
   }
 
   stopSimulation(projectId) {

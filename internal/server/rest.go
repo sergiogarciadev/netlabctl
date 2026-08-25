@@ -295,11 +295,50 @@ func (s *Server) handleStartProjectSimulation(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	logger.Log.Info("REST API: Start project simulation", "id", id)
-	s.hub.startProjectSimulation(id)
+	var req struct {
+		StartNodes *bool `json:"startNodes"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	startNodes := true
+	if req.StartNodes != nil {
+		startNodes = *req.StartNodes
+	}
+
+	logger.Log.Info("REST API: Start project simulation", "id", id, "startNodes", startNodes)
+	s.hub.startProjectSimulation(id, startNodes)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "running", "projectId": id})
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "running", "projectId": id, "startNodes": startNodes})
+}
+
+func (s *Server) handleStartSingleNode(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	nodeID := r.PathValue("nodeId")
+	if id == "" || nodeID == "" {
+		http.Error(w, "Missing project id or node id", http.StatusBadRequest)
+		return
+	}
+
+	logger.Log.Info("REST API: Start single node", "id", id, "nodeId", nodeID)
+	s.hub.startSingleNode(id, nodeID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "running", "nodeId": nodeID})
+}
+
+func (s *Server) handleStopSingleNode(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	nodeID := r.PathValue("nodeId")
+	if id == "" || nodeID == "" {
+		http.Error(w, "Missing project id or node id", http.StatusBadRequest)
+		return
+	}
+
+	logger.Log.Info("REST API: Stop single node", "id", id, "nodeId", nodeID)
+	s.hub.stopSingleNode(id, nodeID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "stopped", "nodeId": nodeID})
 }
 
 func (s *Server) handleStopProjectSimulation(w http.ResponseWriter, r *http.Request) {

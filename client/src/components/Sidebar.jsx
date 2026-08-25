@@ -5,8 +5,11 @@ import {
   Edit2,
   FileCode,
   HardDrive,
+  Play,
+  Power,
   Radio,
   Server,
+  Square,
   Terminal as TerminalIcon,
   Trash2,
   X,
@@ -23,6 +26,7 @@ export function Sidebar({
   onUpdateNode,
   onDeleteNode,
   onUpdateWire,
+  onToggleNodePower,
 }) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [name, setName] = useState("");
@@ -207,7 +211,7 @@ export function Sidebar({
             {tmpl ? tmpl.name : selectedNode.templateId}
           </strong>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span
             style={{
               padding: "2px 8px",
@@ -231,6 +235,34 @@ export function Sidebar({
           >
             Power: {selectedNode.power === "on" || selectedNode.status === "running" ? "ON" : "OFF"}
           </span>
+
+          <button
+            type="button"
+            className={`btn ${selectedNode.power === "on" || selectedNode.status === "running" ? "btn-danger" : "btn-success"}`}
+            style={{
+              padding: "3px 8px",
+              fontSize: "0.75rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+            }}
+            onClick={() => onToggleNodePower?.(selectedNode.id)}
+            title={
+              selectedNode.power === "on" || selectedNode.status === "running"
+                ? "Power Off / Stop Machine Instance"
+                : "Power On / Start Machine Instance"
+            }
+          >
+            {selectedNode.power === "on" || selectedNode.status === "running" ? (
+              <>
+                <Square size={12} /> Stop Machine
+              </>
+            ) : (
+              <>
+                <Play size={12} /> Start Machine
+              </>
+            )}
+          </button>
         </div>
       </div>
 
