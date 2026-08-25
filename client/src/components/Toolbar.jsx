@@ -8,6 +8,7 @@ import {
   Plus,
   RotateCcw,
   RotateCw,
+  Settings,
   Square,
   Terminal as TerminalIcon,
   Trash2,
@@ -33,6 +34,7 @@ export function Toolbar({
   onAddDevice,
   selectedNode,
   onOpenTerminal,
+  onOpenSettings,
 }) {
   return (
     <div className="toolbar">
@@ -186,6 +188,15 @@ export function Toolbar({
 
         <button type="button" className="btn btn-primary" onClick={onAddDevice}>
           <Plus size={16} /> Add Device
+        </button>
+
+        <button
+          type="button"
+          className="btn"
+          onClick={onOpenSettings}
+          title="Application Settings & Configuration"
+        >
+          <Settings size={16} /> Settings
         </button>
 
         {selectedNode && (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddDeviceModal } from "./components/AddDeviceModal";
 import { Canvas } from "./components/Canvas";
+import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { Toolbar } from "./components/Toolbar";
@@ -36,6 +37,25 @@ export function App() {
   const [terminalOrder, setTerminalOrder] = useState([]);
   const [activeTool, setActiveTool] = useState("select");
   const [isRunning, setIsRunning] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [config, setConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem("netlabctl_config");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Failed to load netlabctl_config", e);
+    }
+    return { showDebugHud: true };
+  });
+
+  const handleUpdateConfig = useCallback((newConfig) => {
+    setConfig(newConfig);
+    try {
+      localStorage.setItem("netlabctl_config", JSON.stringify(newConfig));
+    } catch (e) {
+      console.error("Failed to save netlabctl_config", e);
+    }
+  }, []);
 
   const handleFocusTerminal = useCallback((nodeId) => {
     setFocusedTerminalNodeId(nodeId);
@@ -526,6 +546,7 @@ export function App() {
         onAddDevice={() => setIsAddDeviceOpen(true)}
         selectedNode={selectedNode}
         onOpenTerminal={handleOpenTerminal}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       <div className="main-content">
@@ -541,6 +562,7 @@ export function App() {
           onDeleteWire={handleDeleteWire}
           onDeleteNode={handleDeleteNode}
           onUpdateNode={handleUpdateNode}
+          showDebugHud={config.showDebugHud !== false}
         />
 
         <Sidebar
@@ -564,6 +586,13 @@ export function App() {
           isOpen={isAddDeviceOpen}
           onClose={() => setIsAddDeviceOpen(false)}
           onSelectTemplate={handleAddNodeFromTemplate}
+        />
+
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          config={config}
+          onUpdateConfig={handleUpdateConfig}
         />
 
         {activeTerminalNodes.length > 0 &&

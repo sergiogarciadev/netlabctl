@@ -26,6 +26,7 @@ export function Canvas({
   onDeleteWire,
   onDeleteNode,
   onUpdateNode,
+  showDebugHud = true,
 }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -807,7 +808,7 @@ export function Canvas({
         </button>
       </div>
 
-      <DebugPanel debugInfo={debugInfo} />
+      {showDebugHud && <DebugPanel debugInfo={debugInfo} />}
     </div>
   );
 }
