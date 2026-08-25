@@ -491,12 +491,12 @@ export function App() {
 
       if (isPortConnected(srcNodeId, srcPortId)) {
         console.warn("[NETLAB-APP-DEBUG] Rejected: Source port already connected.");
-        alert(`Port ${srcPortId} on device ${srcNodeId} is already connected to a wire!`);
+        showError(`Port ${srcPortId} on device ${srcNodeId} is already connected to a wire!`);
         return;
       }
       if (isPortConnected(dstNodeId, dstPortId)) {
         console.warn("[NETLAB-APP-DEBUG] Rejected: Destination port already connected.");
-        alert(`Port ${dstPortId} on device ${dstNodeId} is already connected to a wire!`);
+        showError(`Port ${dstPortId} on device ${dstNodeId} is already connected to a wire!`);
         return;
       }
 
@@ -513,7 +513,7 @@ export function App() {
       console.log("[NETLAB-APP-DEBUG] Wire created successfully:", newWire);
       commitProjectUpdate(updatedProject, true);
     },
-    [commitProjectUpdate],
+    [commitProjectUpdate, showError],
   );
 
   const handleDeleteWire = useCallback(

@@ -34,9 +34,13 @@ export function Canvas({
   const wiringStateRef = useRef({
     active: false,
     srcNodeId: null,
+    srcNodeGroup: null,
     srcPortId: null,
+    startPos: null,
     tempLine: null,
+    tempArrow: null,
   });
+  const hoverHighlightRef = useRef(null);
 
   const panStateRef = useRef({
     isPanning: false,
@@ -262,11 +266,27 @@ export function Canvas({
 
   const cancelWiring = useCallback(() => {
     const canvas = fabricCanvasRef.current;
-    if (wiringStateRef.current.tempLine && canvas && !canvas.isDisposed) {
-      canvas.remove(wiringStateRef.current.tempLine);
+    if (canvas && !canvas.isDisposed) {
+      if (wiringStateRef.current.tempLine) {
+        canvas.remove(wiringStateRef.current.tempLine);
+      }
+      if (wiringStateRef.current.tempArrow) {
+        canvas.remove(wiringStateRef.current.tempArrow);
+      }
+      if (hoverHighlightRef.current) {
+        hoverHighlightRef.current.set({ visible: false });
+      }
     }
     console.log("[NETLAB-WIRE-DEBUG] Wiring canceled/reset.");
-    wiringStateRef.current = { active: false, srcNodeId: null, srcPortId: null, tempLine: null };
+    wiringStateRef.current = {
+      active: false,
+      srcNodeId: null,
+      srcNodeGroup: null,
+      srcPortId: null,
+      startPos: null,
+      tempLine: null,
+      tempArrow: null,
+    };
     if (canvas && !canvas.isDisposed) canvas.requestRenderAll();
   }, []);
 
@@ -511,15 +531,50 @@ export function Canvas({
         });
       }
 
+      if (nearestPort?.absPos) {
+        if (!hoverHighlightRef.current || hoverHighlightRef.current.canvas !== canvas) {
+          if (hoverHighlightRef.current && canvas && !canvas.isDisposed) {
+            canvas.remove(hoverHighlightRef.current);
+          }
+          hoverHighlightRef.current = new Circle({
+            radius: 10,
+            fill: "rgba(59, 130, 246, 0.35)",
+            stroke: "#3b82f6",
+            strokeWidth: 2,
+            strokeDashArray: [4, 2],
+            originX: "center",
+            originY: "center",
+            selectable: false,
+            evented: false,
+            visible: false,
+          });
+          canvas.add(hoverHighlightRef.current);
+        }
+        hoverHighlightRef.current.set({
+          left: nearestPort.absPos.x,
+          top: nearestPort.absPos.y,
+          visible: true,
+        });
+        canvas.bringObjectToFront(hoverHighlightRef.current);
+        canvas.defaultCursor = "crosshair";
+      } else if (hoverHighlightRef.current) {
+        hoverHighlightRef.current.set({ visible: false });
+        if (!wiringStateRef.current.active) {
+          canvas.defaultCursor = activeToolRef.current === "wire" ? "crosshair" : "default";
+        }
+      }
+
       if (wiringStateRef.current.active && wiringStateRef.current.tempLine) {
         const startPos = wiringStateRef.current.startPos;
         const srcNodeGroup = wiringStateRef.current.srcNodeGroup;
         const srcPortId = wiringStateRef.current.srcPortId;
         const allNodeGroups = canvas.getObjects().filter((obj) => obj.isNodeGroup);
 
+        const targetPos = nearestPort ? nearestPort.absPos : pointer;
+
         const orthoPoints = calculateShortestOrthogonalPath(
           startPos,
-          pointer,
+          targetPos,
           srcNodeGroup,
           target?.isNodeGroup ? target : null,
           allNodeGroups,
@@ -527,6 +582,22 @@ export function Canvas({
           "",
         );
         wiringStateRef.current.tempLine.set({ points: orthoPoints });
+
+        if (wiringStateRef.current.tempArrow) {
+          const n = orthoPoints.length;
+          const pPrev = n > 1 ? orthoPoints[n - 2] : startPos;
+          const pEnd = orthoPoints[n - 1] || targetPos;
+          const angleDeg = (Math.atan2(pEnd.y - pPrev.y, pEnd.x - pPrev.x) * 180) / Math.PI;
+
+          wiringStateRef.current.tempArrow.set({
+            left: pEnd.x,
+            top: pEnd.y,
+            angle: angleDeg,
+            visible: true,
+          });
+          canvas.bringObjectToFront(wiringStateRef.current.tempLine);
+          canvas.bringObjectToFront(wiringStateRef.current.tempArrow);
+        }
         canvas.requestRenderAll();
       }
     });
@@ -582,67 +653,84 @@ export function Canvas({
         const portAbsPos = nearPort.absPos;
         const node = targetNodeGroup.nodeData;
 
-        if (
-          activeToolRef.current === "wire" ||
-          subTarget?.portId ||
-          wiringStateRef.current.active
-        ) {
-          opt.e.stopPropagation();
+        opt.e.stopPropagation();
 
-          if (!wiringStateRef.current.active) {
-            const allNodeGroups = canvas.getObjects().filter((obj) => obj.isNodeGroup);
-            const orthoPoints = calculateShortestOrthogonalPath(
-              portAbsPos,
-              pointer,
-              targetNodeGroup,
-              null,
-              allNodeGroups,
-              clickedPortId,
-              "",
-            );
+        if (!wiringStateRef.current.active) {
+          const allNodeGroups = canvas.getObjects().filter((obj) => obj.isNodeGroup);
+          const orthoPoints = calculateShortestOrthogonalPath(
+            portAbsPos,
+            pointer,
+            targetNodeGroup,
+            null,
+            allNodeGroups,
+            clickedPortId,
+            "",
+          );
 
-            wiringStateRef.current = {
-              active: true,
-              srcNodeId: node.id,
-              srcNodeGroup: targetNodeGroup,
-              srcPortId: clickedPortId,
-              startPos: portAbsPos,
-              tempLine: new Polyline(orthoPoints, {
-                stroke: "#3b82f6",
-                strokeWidth: 3,
-                fill: "transparent",
-                strokeDashArray: [6, 4],
-                strokeLineJoin: "round",
-                strokeLineCap: "round",
-                selectable: false,
-                evented: false,
-              }),
-            };
-            canvas.add(wiringStateRef.current.tempLine);
-          } else {
-            const { srcNodeId, srcPortId } = wiringStateRef.current;
-            if (srcNodeId !== node.id || srcPortId !== clickedPortId) {
-              onAddWireRef.current(srcNodeId, srcPortId, node.id, clickedPortId);
-            }
-            cancelWiring();
+          const tempLine = new Polyline(orthoPoints, {
+            stroke: "#3b82f6",
+            strokeWidth: 3,
+            fill: "transparent",
+            strokeDashArray: [6, 4],
+            strokeLineJoin: "round",
+            strokeLineCap: "round",
+            selectable: false,
+            evented: false,
+          });
+
+          const tempArrow = new Polygon(
+            [
+              { x: 0, y: -7 },
+              { x: 14, y: 0 },
+              { x: 0, y: 7 },
+            ],
+            {
+              fill: "#3b82f6",
+              stroke: "#2563eb",
+              strokeWidth: 1,
+              originX: "left",
+              originY: "center",
+              selectable: false,
+              evented: false,
+            },
+          );
+
+          wiringStateRef.current = {
+            active: true,
+            srcNodeId: node.id,
+            srcNodeGroup: targetNodeGroup,
+            srcPortId: clickedPortId,
+            startPos: portAbsPos,
+            tempLine,
+            tempArrow,
+          };
+          canvas.add(tempLine);
+          canvas.add(tempArrow);
+          canvas.bringObjectToFront(tempLine);
+          canvas.bringObjectToFront(tempArrow);
+          canvas.requestRenderAll();
+        } else {
+          const { srcNodeId, srcPortId } = wiringStateRef.current;
+          if (srcNodeId !== node.id || srcPortId !== clickedPortId) {
+            onAddWireRef.current(srcNodeId, srcPortId, node.id, clickedPortId);
           }
-          return;
+          cancelWiring();
         }
+        return;
+      }
+
+      if (wiringStateRef.current.active) {
+        cancelWiring();
+        return;
       }
 
       // SELECT TOOL MODE ONLY
       if (activeToolRef.current === "select") {
-        if (wiringStateRef.current.active) {
-          cancelWiring();
-        }
-
         if (target?.isNodeGroup) {
           onSelectNodeRef.current(target.nodeData);
         } else if (!target) {
           onSelectNodeRef.current(null);
         }
-      } else if (activeToolRef.current === "wire" && wiringStateRef.current.active) {
-        cancelWiring();
       }
     });
 
