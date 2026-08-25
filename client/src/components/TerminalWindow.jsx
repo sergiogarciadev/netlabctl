@@ -247,6 +247,7 @@ export function TerminalWindow({
 
       socket.onopen = () => {
         if (isDisposed) return;
+        term.write("\r\n\x1b[32mConnected to serial console.\x1b[0m\r\n");
         setTermDimensions({ rows: term.rows, cols: term.cols });
         sendSizeReport(term.rows, term.cols);
       };

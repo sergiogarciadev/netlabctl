@@ -94,6 +94,25 @@ export function App() {
     }
   }, [project.nodes, selectedNode]);
 
+  // Keep activeTerminalNodes synchronized with the latest node objects in project.nodes
+  useEffect(() => {
+    if (activeTerminalNodes.length > 0 && project.nodes) {
+      const nodeMap = new Map(project.nodes.map((n) => [n.id, n]));
+      setActiveTerminalNodes((prev) => {
+        let changed = false;
+        const updated = prev.map((oldNode) => {
+          const freshNode = nodeMap.get(oldNode.id);
+          if (freshNode && freshNode !== oldNode) {
+            changed = true;
+            return freshNode;
+          }
+          return oldNode;
+        });
+        return changed ? updated : prev;
+      });
+    }
+  }, [project.nodes, activeTerminalNodes.length]);
+
   // History State Stack for Undo / Redo
   const historyRef = useRef([]);
   const historyIndexRef = useRef(-1);
