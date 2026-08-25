@@ -60,9 +60,34 @@ type WireBridge struct {
 	last100msDstSrc int64
 	stopChan        chan struct{}
 
+	condMu     sync.RWMutex
 	tzspMu     sync.Mutex
 	tzspTarget string
 	tzspConn   *net.UDPConn
+}
+
+func (b *WireBridge) GetConditions() model.NetworkCondition {
+	b.condMu.RLock()
+	defer b.condMu.RUnlock()
+	return b.Wire.Conditions
+}
+
+func (b *WireBridge) SetConditions(cond model.NetworkCondition) {
+	b.condMu.Lock()
+	defer b.condMu.Unlock()
+	b.Wire.Conditions = cond
+}
+
+func (b *WireBridge) GetTZSPTarget() string {
+	b.condMu.RLock()
+	defer b.condMu.RUnlock()
+	return b.Wire.TZSPTarget
+}
+
+func (b *WireBridge) SetTZSPTarget(target string) {
+	b.condMu.Lock()
+	defer b.condMu.Unlock()
+	b.Wire.TZSPTarget = target
 }
 
 type NetworkManager struct {
@@ -298,7 +323,7 @@ func (nm *NetworkManager) UpdateWireCondition(wireID string, cond model.NetworkC
 	defer nm.mu.Unlock()
 
 	if bridge, exists := nm.bridges[wireID]; exists {
-		bridge.Wire.Conditions = cond
+		bridge.SetConditions(cond)
 		logger.Log.Info("Updated wire network conditions", "wireID", wireID, "delayMs", cond.DelayMs, "jitterMs", cond.JitterMs, "lossPercent", cond.LossPercent)
 	}
 }
@@ -309,7 +334,7 @@ func (nm *NetworkManager) UpdateWireTZSP(wireID string, tzspTarget string) {
 	defer nm.mu.Unlock()
 
 	if bridge, exists := nm.bridges[wireID]; exists {
-		bridge.Wire.TZSPTarget = tzspTarget
+		bridge.SetTZSPTarget(tzspTarget)
 		logger.Log.Info("Updated wire TZSP target", "wireID", wireID, "target", tzspTarget)
 	}
 }
@@ -364,8 +389,11 @@ func (b *WireBridge) runBridge() {
 func (b *WireBridge) processAndForward(frame EthernetFrame, dst *ManagedPortSocket, dirCounter *int64) {
 	pktLen := uint32(len(frame.Payload))
 
+	cond := b.GetConditions()
+	tzspTarget := b.GetTZSPTarget()
+
 	// 1. Packet Loss Impairment
-	lossPct := b.Wire.Conditions.LossPercent
+	lossPct := cond.LossPercent
 	if lossPct > 0 {
 		if rand.Float64()*100.0 < lossPct {
 			logger.Log.Debug("Dropped packet due to network condition loss", "wireID", b.Wire.ID, "lossPercent", lossPct)
@@ -374,9 +402,9 @@ func (b *WireBridge) processAndForward(frame EthernetFrame, dst *ManagedPortSock
 	}
 
 	// 2. Delay & Jitter Impairment
-	delayMs := b.Wire.Conditions.DelayMs
-	if b.Wire.Conditions.JitterMs > 0 {
-		jit := rand.Intn(2*b.Wire.Conditions.JitterMs+1) - b.Wire.Conditions.JitterMs
+	delayMs := cond.DelayMs
+	if cond.JitterMs > 0 {
+		jit := rand.Intn(2*cond.JitterMs+1) - cond.JitterMs
 		delayMs += jit
 		if delayMs < 0 {
 			delayMs = 0
@@ -390,8 +418,8 @@ func (b *WireBridge) processAndForward(frame EthernetFrame, dst *ManagedPortSock
 			atomic.AddInt64(dirCounter, 1)
 		}
 
-		if b.Wire.TZSPTarget != "" {
-			b.sendTZSPFrame(frame.Payload)
+		if tzspTarget != "" {
+			b.sendTZSPFrame(frame.Payload, tzspTarget)
 		}
 
 		// Write 4-byte header + payload to destination QEMU socket
@@ -405,8 +433,7 @@ func (b *WireBridge) processAndForward(frame EthernetFrame, dst *ManagedPortSock
 	}
 }
 
-func (b *WireBridge) sendTZSPFrame(payload []byte) {
-	target := b.Wire.TZSPTarget
+func (b *WireBridge) sendTZSPFrame(payload []byte, target string) {
 	if target == "" {
 		b.tzspMu.Lock()
 		if b.tzspConn != nil {
@@ -489,7 +516,7 @@ func (nm *NetworkManager) GetStats() []WireProxyStats {
 			TotalBytes:    atomic.LoadInt64(&b.bytesCount),
 			SrcToDst100ms: atomic.LoadInt64(&b.last100msSrcDst),
 			DstToSrc100ms: atomic.LoadInt64(&b.last100msDstSrc),
-			TZSPActive:    b.Wire.TZSPTarget != "",
+			TZSPActive:    b.GetTZSPTarget() != "",
 		})
 	}
 	return stats
