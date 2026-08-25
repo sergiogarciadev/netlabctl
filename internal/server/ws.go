@@ -635,27 +635,36 @@ func (h *WSHub) SyncTopologyNetworkAndMonitors(top *model.Topology) {
 		}
 	}
 
-	// Issue QMP/HMP monitor set_link carrier status (ethN on/off) for all node ports
+	// Issue QMP/HMP monitor set_link carrier status (ethN on/off) for all running node ports concurrently
+	var wg sync.WaitGroup
 	for _, node := range top.Nodes {
-		for i, port := range node.Ports {
-			devID := fmt.Sprintf("eth%d", i)
-			portKey := fmt.Sprintf("%s:%s", node.ID, port.ID)
-
-			pType := port.Type
-			if pType == "" {
-				pType = "managed"
-			}
-
-			// Unmanaged/non-managed interfaces (user, bridge, tap, unmanaged) are ALWAYS set to link UP ('on').
-			// Managed interfaces are set to link UP ('on') if connected to a wire in the topology.
-			linkOn := true
-			if pType == "managed" {
-				linkOn = connectedPorts[portKey]
-			}
-
-			_ = h.qemuMgr.SetPortLinkStatus(top.ID, node.ID, devID, linkOn)
+		if !h.qemuMgr.IsNodeRunning(node.ID) {
+			continue
 		}
+		wg.Add(1)
+		go func(n model.Node) {
+			defer wg.Done()
+			for i, port := range n.Ports {
+				devID := fmt.Sprintf("eth%d", i)
+				portKey := fmt.Sprintf("%s:%s", n.ID, port.ID)
+
+				pType := port.Type
+				if pType == "" {
+					pType = "managed"
+				}
+
+				// Unmanaged/non-managed interfaces (user, bridge, tap, unmanaged) are ALWAYS set to link UP ('on').
+				// Managed interfaces are set to link UP ('on') if connected to a wire in the topology.
+				linkOn := true
+				if pType == "managed" {
+					linkOn = connectedPorts[portKey]
+				}
+
+				_ = h.qemuMgr.SetPortLinkStatus(top.ID, n.ID, devID, linkOn)
+			}
+		}(node)
 	}
+	wg.Wait()
 }
 
 func (c *Client) sendJSON(msgType string, data interface{}) {

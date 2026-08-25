@@ -362,10 +362,20 @@ func (m *Manager) ResetNode(projectID, nodeID string) error {
 
 // SetPortLinkStatus connects to the node's QEMU monitor socket and sets link status on/off.
 func (m *Manager) SetPortLinkStatus(projectID, nodeID, deviceID string, linkOn bool) error {
-	nDir := m.NodeDir(projectID, nodeID)
-	monitorSock := filepath.Join(nDir, "monitor.sock")
+	if !m.IsNodeRunning(nodeID) {
+		return nil
+	}
 
-	conn, err := net.DialTimeout("unix", monitorSock, 2*time.Second)
+	nDir := m.NodeDir(projectID, nodeID)
+	if nDir == "" {
+		return fmt.Errorf("invalid node directory for node %s", nodeID)
+	}
+	monitorSock := filepath.Join(nDir, "monitor.sock")
+	if _, err := os.Stat(monitorSock); os.IsNotExist(err) {
+		return nil
+	}
+
+	conn, err := net.DialTimeout("unix", monitorSock, 500*time.Millisecond)
 	if err != nil {
 		return fmt.Errorf("failed to dial QEMU monitor socket for node %s: %w", nodeID, err)
 	}
