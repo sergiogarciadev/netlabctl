@@ -1,14 +1,31 @@
-// API Service for netlabctl REST endpoints & WebSocket connections
+// Helper to extract exact error message details returned by the server
+async function handleErrorResponse(res, defaultMsg) {
+  let errorText = defaultMsg;
+  try {
+    const text = await res.text();
+    if (text) {
+      try {
+        const json = JSON.parse(text);
+        errorText = json.message || json.error || text;
+      } catch {
+        errorText = text.trim();
+      }
+    }
+  } catch {
+    // fallback to defaultMsg
+  }
+  throw new Error(errorText);
+}
 
 export async function fetchTemplates() {
   const res = await fetch("/api/templates");
-  if (!res.ok) throw new Error("Failed to fetch machine templates");
+  if (!res.ok) await handleErrorResponse(res, "Failed to fetch machine templates");
   return res.json();
 }
 
 export async function fetchTemplateDrawing(templateId) {
   const res = await fetch(`/api/templates/${templateId}/drawing`);
-  if (!res.ok) throw new Error(`Failed to fetch SVG for template ${templateId}`);
+  if (!res.ok) await handleErrorResponse(res, `Failed to fetch SVG for template ${templateId}`);
   return res.text();
 }
 
@@ -21,23 +38,20 @@ export async function importTemplateZip(file) {
     body: formData,
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to import template ZIP archive");
-  }
+  if (!res.ok) await handleErrorResponse(res, "Failed to import template ZIP archive");
 
   return res.json();
 }
 
 export async function fetchProjects() {
   const res = await fetch("/api/projects");
-  if (!res.ok) throw new Error("Failed to fetch projects");
+  if (!res.ok) await handleErrorResponse(res, "Failed to fetch projects");
   return res.json();
 }
 
 export async function fetchProject(id) {
   const res = await fetch(`/api/projects/${id}`);
-  if (!res.ok) throw new Error(`Failed to fetch project ${id}`);
+  if (!res.ok) await handleErrorResponse(res, `Failed to fetch project ${id}`);
   return res.json();
 }
 
@@ -47,7 +61,7 @@ export async function createProject(project) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(project),
   });
-  if (!res.ok) throw new Error("Failed to create project");
+  if (!res.ok) await handleErrorResponse(res, "Failed to create project");
   return res.json();
 }
 
@@ -57,7 +71,7 @@ export async function updateProject(id, project) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(project),
   });
-  if (!res.ok) throw new Error("Failed to update project");
+  if (!res.ok) await handleErrorResponse(res, "Failed to update project");
   return res.json();
 }
 
@@ -67,7 +81,7 @@ export async function cloneProject(id, newName) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: newName }),
   });
-  if (!res.ok) throw new Error("Failed to clone project");
+  if (!res.ok) await handleErrorResponse(res, "Failed to clone project");
   return res.json();
 }
 
@@ -75,7 +89,7 @@ export async function deleteProject(id) {
   const res = await fetch(`/api/projects/${id}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error("Failed to delete project");
+  if (!res.ok) await handleErrorResponse(res, "Failed to delete project");
   return true;
 }
 
@@ -85,7 +99,7 @@ export async function addNodeToProject(projectId, templateId, name, x, y) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ templateId, name, x, y }),
   });
-  if (!res.ok) throw new Error("Failed to add node to project");
+  if (!res.ok) await handleErrorResponse(res, "Failed to add node to project");
   return res.json();
 }
 
@@ -95,13 +109,13 @@ export async function startProjectSimulation(projectId, startNodes = true) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ startNodes }),
   });
-  if (!res.ok) throw new Error("Failed to start project simulation");
+  if (!res.ok) await handleErrorResponse(res, "Failed to start project simulation");
   return res.json();
 }
 
 export async function stopProjectSimulation(projectId) {
   const res = await fetch(`/api/projects/${projectId}/stop`, { method: "POST" });
-  if (!res.ok) throw new Error("Failed to stop project simulation");
+  if (!res.ok) await handleErrorResponse(res, "Failed to stop project simulation");
   return res.json();
 }
 
@@ -109,7 +123,7 @@ export async function startNodePower(projectId, nodeId) {
   const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}/start`, {
     method: "POST",
   });
-  if (!res.ok) throw new Error(`Failed to start node ${nodeId}`);
+  if (!res.ok) await handleErrorResponse(res, `Failed to start node ${nodeId}`);
   return res.json();
 }
 
@@ -117,7 +131,7 @@ export async function shutdownNodePower(projectId, nodeId) {
   const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}/shutdown`, {
     method: "POST",
   });
-  if (!res.ok) throw new Error(`Failed to shutdown node ${nodeId}`);
+  if (!res.ok) await handleErrorResponse(res, `Failed to shutdown node ${nodeId}`);
   return res.json();
 }
 
@@ -125,7 +139,7 @@ export async function resetNodePower(projectId, nodeId) {
   const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}/reset`, {
     method: "POST",
   });
-  if (!res.ok) throw new Error(`Failed to reset node ${nodeId}`);
+  if (!res.ok) await handleErrorResponse(res, `Failed to reset node ${nodeId}`);
   return res.json();
 }
 
@@ -133,7 +147,7 @@ export async function stopNodePower(projectId, nodeId) {
   const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}/stop`, {
     method: "POST",
   });
-  if (!res.ok) throw new Error(`Failed to stop node ${nodeId}`);
+  if (!res.ok) await handleErrorResponse(res, `Failed to stop node ${nodeId}`);
   return res.json();
 }
 
@@ -141,7 +155,7 @@ export async function recreateNodeDisk(projectId, nodeId) {
   const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}/recreate-disk`, {
     method: "POST",
   });
-  if (!res.ok) throw new Error(`Failed to recreate disk for node ${nodeId}`);
+  if (!res.ok) await handleErrorResponse(res, `Failed to recreate disk for node ${nodeId}`);
   return res.json();
 }
 
@@ -149,7 +163,7 @@ export async function deleteNodeFromProject(projectId, nodeId) {
   const res = await fetch(`/api/projects/${projectId}/nodes/${nodeId}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(`Failed to delete node ${nodeId}`);
+  if (!res.ok) await handleErrorResponse(res, `Failed to delete node ${nodeId}`);
 }
 
 export class WSClient {
