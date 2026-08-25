@@ -57,6 +57,10 @@ func (m *SerialHubManager) GetHub(projectID, nodeID, sockPath string) *NodeSeria
 			clients:   make(map[*terminalClient]struct{}),
 		}
 		m.hubs[key] = hub
+	} else {
+		hub.mu.Lock()
+		hub.sockPath = sockPath
+		hub.mu.Unlock()
 	}
 	return hub
 }
@@ -100,10 +104,26 @@ func (h *NodeSerialHub) Unsubscribe(client *terminalClient) {
 
 func (h *NodeSerialHub) Broadcast(data []byte) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
+	clientsCopy := make([]*terminalClient, 0, len(h.clients))
 	for client := range h.clients {
-		_ = client.writeMessage(websocket.TextMessage, data)
+		clientsCopy = append(clientsCopy, client)
+	}
+	h.mu.Unlock()
+
+	var deadClients []*terminalClient
+	for _, client := range clientsCopy {
+		err := client.writeMessage(websocket.TextMessage, data)
+		if err != nil {
+			deadClients = append(deadClients, client)
+		}
+	}
+
+	if len(deadClients) > 0 {
+		h.mu.Lock()
+		for _, client := range deadClients {
+			delete(h.clients, client)
+		}
+		h.mu.Unlock()
 	}
 }
 
@@ -128,7 +148,11 @@ func (h *NodeSerialHub) runLoop(stopChan chan struct{}) {
 		default:
 		}
 
-		sock, err := net.Dial("unix", h.sockPath)
+		h.mu.Lock()
+		sockPath := h.sockPath
+		h.mu.Unlock()
+
+		sock, err := net.Dial("unix", sockPath)
 		if err != nil {
 			select {
 			case <-stopChan:
@@ -142,10 +166,20 @@ func (h *NodeSerialHub) runLoop(stopChan chan struct{}) {
 		h.activeSock = sock
 		h.mu.Unlock()
 
-		logger.Log.Debug("SerialHub connected to UNIX socket", "nodeID", h.nodeID, "sockPath", h.sockPath)
+		logger.Log.Debug("SerialHub connected to UNIX socket", "nodeID", h.nodeID, "sockPath", sockPath)
 
 		buf := make([]byte, 1024)
 		for {
+			select {
+			case <-stopChan:
+				_ = sock.Close()
+				h.mu.Lock()
+				h.activeSock = nil
+				h.mu.Unlock()
+				return
+			default:
+			}
+
 			n, err := sock.Read(buf)
 			if n > 0 {
 				h.Broadcast(buf[:n])

@@ -207,35 +207,59 @@ export function TerminalWindow({
       }
     });
 
-    const host =
-      window.location.port === "3000" ? `${window.location.hostname}:8080` : window.location.host;
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${host}/api/v1/projects/${projectId || "default"}/nodes/${nodeId}/terminal`;
-
-    const socket = new WebSocket(wsUrl);
+    let isDisposed = false;
+    let socket = null;
+    let reconnectTimeout = null;
 
     const sendSizeReport = (rows, cols) => {
-      if (socket.readyState === WebSocket.OPEN) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(`\x1b[8;${rows};${cols}t`);
       }
     };
 
-    socket.onopen = () => {
-      term.writeln(`\x1b[1;32mConnected to serial console for ${nodeName}...\x1b[0m\r\n`);
-      setTermDimensions({ rows: term.rows, cols: term.cols });
-      sendSizeReport(term.rows, term.cols);
+    const connectWebSocket = () => {
+      if (isDisposed) return;
+
+      const host =
+        window.location.port === "3000" ? `${window.location.hostname}:8080` : window.location.host;
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}//${host}/api/v1/projects/${projectId || "default"}/nodes/${nodeId}/terminal`;
+
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        if (isDisposed) return;
+        setTermDimensions({ rows: term.rows, cols: term.cols });
+        sendSizeReport(term.rows, term.cols);
+      };
+
+      socket.onmessage = (event) => {
+        if (!isDisposed) {
+          term.write(event.data);
+        }
+      };
+
+      socket.onclose = () => {
+        if (!isDisposed) {
+          reconnectTimeout = setTimeout(connectWebSocket, 2000);
+        }
+      };
+
+      socket.onerror = () => {
+        if (!isDisposed && socket) {
+          try {
+            socket.close();
+          } catch (e) {
+            // ignore
+          }
+        }
+      };
     };
 
-    socket.onmessage = (event) => {
-      term.write(event.data);
-    };
-
-    socket.onerror = (err) => {
-      term.writeln("\r\n\x1b[1;31mTerminal connection error.\x1b[0m\r\n");
-    };
+    connectWebSocket();
 
     term.onData((data) => {
-      if (socket.readyState === WebSocket.OPEN) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(data);
       }
     });
@@ -277,14 +301,19 @@ export function TerminalWindow({
     }
 
     return () => {
+      isDisposed = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleResize);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      socket.close();
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
       term.dispose();
     };
-  }, [projectId, nodeId, nodeName]);
+  }, [projectId, nodeId]);
 
   // Floating Detached Window Style vs Docked Bottom Window Style
   const detachedStyle = {
