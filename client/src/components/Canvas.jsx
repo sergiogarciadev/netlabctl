@@ -81,6 +81,11 @@ export function Canvas({
   const [debugInfo, setDebugInfo] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(100);
 
+  const showDebugHudRef = useRef(showDebugHud);
+  useEffect(() => {
+    showDebugHudRef.current = showDebugHud;
+  }, [showDebugHud]);
+
   useEffect(() => {
     wireStatsRef.current = wireStats;
   }, [wireStats]);
@@ -481,17 +486,30 @@ export function Canvas({
         }
       }
 
-      setDebugInfo({
-        activeTool: activeToolRef.current,
-        pointer,
-        nodeId,
-        subTargetTag,
-        nearestPort,
-        hoveredWire,
-        onTestPulseWire: handleTestPulseWire,
-        isWiring: wiringStateRef.current.active,
-        srcPortId: wiringStateRef.current.srcPortId,
-      });
+      if (showDebugHudRef.current) {
+        setDebugInfo((prev) => {
+          if (
+            prev &&
+            prev.nodeId === nodeId &&
+            prev.subTargetTag === subTargetTag &&
+            prev.hoveredWire?.id === hoveredWire?.id &&
+            prev.isWiring === wiringStateRef.current.active
+          ) {
+            return prev;
+          }
+          return {
+            activeTool: activeToolRef.current,
+            pointer,
+            nodeId,
+            subTargetTag,
+            nearestPort,
+            hoveredWire,
+            onTestPulseWire: handleTestPulseWire,
+            isWiring: wiringStateRef.current.active,
+            srcPortId: wiringStateRef.current.srcPortId,
+          };
+        });
+      }
 
       if (wiringStateRef.current.active && wiringStateRef.current.tempLine) {
         const startPos = wiringStateRef.current.startPos;
