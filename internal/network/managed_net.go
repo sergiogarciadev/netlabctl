@@ -38,6 +38,7 @@ type ManagedPortSocket struct {
 	listener    net.Listener
 	conn        net.Conn
 	mu          sync.Mutex
+	writeMu     sync.Mutex
 	nextSubID   uint64
 	subscribers map[uint64]chan EthernetFrame
 	readerStop  chan struct{}
@@ -242,6 +243,9 @@ func (ps *ManagedPortSocket) Unsubscribe(id uint64) {
 }
 
 func (ps *ManagedPortSocket) WriteFrame(header, payload []byte) error {
+	ps.writeMu.Lock()
+	defer ps.writeMu.Unlock()
+
 	ps.mu.Lock()
 	conn := ps.conn
 	ps.mu.Unlock()
@@ -250,11 +254,8 @@ func (ps *ManagedPortSocket) WriteFrame(header, payload []byte) error {
 		return fmt.Errorf("no connection for port %s", ps.Key)
 	}
 
-	_, err := conn.Write(header)
-	if err != nil {
-		return err
-	}
-	_, err = conn.Write(payload)
+	buffers := net.Buffers{header, payload}
+	_, err := buffers.WriteTo(conn)
 	return err
 }
 
