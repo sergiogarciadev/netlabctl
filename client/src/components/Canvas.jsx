@@ -428,11 +428,16 @@ export function Canvas({
       if (target?.isNodeGroup) {
         nodeId = target.nodeData.id;
         subTargetTag = subTarget?.id || subTarget?.portId || subTarget?.type;
-        nearestPort = findClosestPortInNode(target, pointer.x, pointer.y, 45);
+        if (subTarget?.portId) {
+          const pPos = target.getPortAbsPosition(subTarget.portId);
+          nearestPort = { portId: subTarget.portId, absPos: pPos, dist: 0 };
+        } else {
+          nearestPort = findClosestPortInNode(target, pointer.x, pointer.y, 65);
+        }
       } else {
         for (const obj of canvas.getObjects()) {
           if (obj.isNodeGroup) {
-            const near = findClosestPortInNode(obj, pointer.x, pointer.y, 35);
+            const near = findClosestPortInNode(obj, pointer.x, pointer.y, 45);
             if (near && (!nearestPort || near.dist < nearestPort.dist)) {
               nearestPort = near;
               nodeId = obj.nodeData.id;
@@ -512,6 +517,7 @@ export function Canvas({
             prev &&
             prev.nodeId === nodeId &&
             prev.subTargetTag === subTargetTag &&
+            prev.nearestPort?.portId === nearestPort?.portId &&
             prev.hoveredWire?.id === hoveredWire?.id &&
             prev.isWiring === wiringStateRef.current.active
           ) {
@@ -635,11 +641,16 @@ export function Canvas({
       let nearPort = null;
 
       if (targetNodeGroup) {
-        nearPort = findClosestPortInNode(targetNodeGroup, pointer.x, pointer.y, 45);
+        if (subTarget?.portId) {
+          const pPos = targetNodeGroup.getPortAbsPosition(subTarget.portId);
+          nearPort = { portId: subTarget.portId, absPos: pPos, dist: 0 };
+        } else {
+          nearPort = findClosestPortInNode(targetNodeGroup, pointer.x, pointer.y, 65);
+        }
       } else {
         for (const obj of canvas.getObjects()) {
           if (obj.isNodeGroup) {
-            const hit = findClosestPortInNode(obj, pointer.x, pointer.y, 35);
+            const hit = findClosestPortInNode(obj, pointer.x, pointer.y, 45);
             if (hit && (!nearPort || hit.dist < nearPort.dist)) {
               nearPort = hit;
               targetNodeGroup = obj;
@@ -1592,6 +1603,15 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   });
 
   nodeGroup.getPortAbsPosition = (portId) => {
+    if (portElementsMap.has(portId)) {
+      const portObj = portElementsMap.get(portId);
+      if (portObj && typeof portObj.getCenterPoint === "function") {
+        const pt = portObj.getCenterPoint();
+        if (pt && !Number.isNaN(pt.x) && !Number.isNaN(pt.y)) {
+          return pt;
+        }
+      }
+    }
     const relPos = nodeGroup.portRelativePositions.get(portId);
     if (relPos) {
       return {
