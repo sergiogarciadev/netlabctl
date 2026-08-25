@@ -39,6 +39,7 @@ export function App() {
   const [focusedTerminalNodeId, setFocusedTerminalNodeId] = useState(null);
   const [terminalOrder, setTerminalOrder] = useState([]);
   const [activeTool, setActiveTool] = useState("select");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const isRunning =
     project.simulationStatus === "running" ||
     (project.nodes || []).some((n) => n.status === "running" || n.power === "on");
