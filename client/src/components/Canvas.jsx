@@ -1168,7 +1168,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   }
 
   const nodePorts = node.ports || tmpl?.ports || [];
-  const portAnchors = new Map();
+  const portElementsMap = new Map();
 
   const statusItems = tmpl?.status || [
     { id: "status-power", type: "power" },
@@ -1176,6 +1176,28 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   ];
   const powerItem = statusItems.find((s) => s.type === "power" || s.name === "power");
   const nameItem = statusItems.find((s) => s.type === "name" || s.name === "name");
+
+  const matchPortId = (elemId, port, idx) => {
+    if (!elemId) return false;
+    const cleanElemId = String(elemId).toLowerCase();
+    const pId = String(port.id || "").toLowerCase();
+    const pName = String(port.name || "").toLowerCase();
+
+    return (
+      cleanElemId === pId ||
+      cleanElemId === pName ||
+      cleanElemId === `port-${pId}` ||
+      cleanElemId === `port-${pName}` ||
+      cleanElemId === `device-port-${pId}` ||
+      cleanElemId === `device-port-${pName}` ||
+      cleanElemId === `port${idx + 1}` ||
+      cleanElemId === `p${idx + 1}` ||
+      cleanElemId === `eth${idx}` ||
+      cleanElemId === `ether${idx + 1}` ||
+      cleanElemId.endsWith(`-${pId}`) ||
+      cleanElemId.endsWith(`-${pName}`)
+    );
+  };
 
   const processElement = (obj) => {
     const elemId = obj.id || "";
@@ -1218,15 +1240,8 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
       }
     }
 
-    for (const port of nodePorts) {
-      const isMatch =
-        elemId === port.id ||
-        elemId === `port-${port.name}` ||
-        elemId === `device-port-${port.id}` ||
-        elemId === `device-port-${port.name}` ||
-        elemId.endsWith(port.id);
-
-      if (isMatch) {
+    nodePorts.forEach((port, idx) => {
+      if (matchPortId(elemId, port, idx)) {
         const tagChildren = (targetObj) => {
           targetObj.portId = port.id;
           targetObj.hoverCursor = activeTool === "wire" ? "crosshair" : "pointer";
@@ -1235,15 +1250,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
           }
         };
         tagChildren(obj);
-
-        // Dynamically compute exact center anchor coordinates from SVG element bounding box!
-        let cX = obj.left || 0;
-        let cY = obj.top || 0;
-        const w = (obj.width || 0) * (obj.scaleX || 1);
-        const h = (obj.height || 0) * (obj.scaleY || 1);
-        cX += w / 2;
-        cY += h / 2;
-        portAnchors.set(port.id, { x: cX, y: cY });
+        portElementsMap.set(port.id, obj);
 
         const isConnected = wires.some(
           (w) =>
@@ -1264,7 +1271,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
           obj.set({ fill: portColor });
         }
       }
-    }
+    });
 
     if (obj._objects && Array.isArray(obj._objects)) {
       obj._objects.forEach(processElement);
@@ -1290,12 +1297,19 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
 
   nodeGroup.portRelativePositions = new Map();
   nodePorts.forEach((port, idx) => {
-    if (portAnchors.has(port.id)) {
-      nodeGroup.portRelativePositions.set(port.id, portAnchors.get(port.id));
+    if (portElementsMap.has(port.id)) {
+      const portObj = portElementsMap.get(port.id);
+      const center = portObj.getCenterPoint
+        ? portObj.getCenterPoint()
+        : { x: portObj.left || 0, y: portObj.top || 0 };
+      const relX = center.x + (nodeGroup.width || 120) / 2;
+      const relY = center.y + (nodeGroup.height || 50) / 2;
+      nodeGroup.portRelativePositions.set(port.id, { x: relX, y: relY });
     } else {
-      // Fallback index math if SVG port element is not present
-      const relX = 23 + idx * 25;
-      const relY = 38;
+      const count = nodePorts.length;
+      const step = (nodeGroup.width || 120) / (count + 1);
+      const relX = step * (idx + 1);
+      const relY = (nodeGroup.height || 50) - 8;
       nodeGroup.portRelativePositions.set(port.id, { x: relX, y: relY });
     }
   });
@@ -1331,8 +1345,12 @@ function getPortAbsPositionFromNodeData(node, portId, templates) {
   const ports = node.ports || tmpl?.ports || [];
   const idx = ports.findIndex((p) => p.id === portId || p.name === portId);
 
-  const relX = 23 + (idx >= 0 ? idx : 0) * 25;
-  const relY = 38;
+  const count = ports.length || 1;
+  const width = 120;
+  const height = 50;
+  const step = width / (count + 1);
+  const relX = step * ((idx >= 0 ? idx : 0) + 1);
+  const relY = height - 8;
 
   return {
     x: (node.x || 0) + relX,
