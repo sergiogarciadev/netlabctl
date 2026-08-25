@@ -290,6 +290,15 @@ export function TerminalWindow({
       sendSizeReport(rows, cols);
     });
 
+    // Safely absorb Cursor Position Reports (CSI row;col R) echoed back by serial drivers so ^[[39;1R is never printed
+    term.parser.registerCsiHandler({ final: "R" }, () => true);
+
+    // Safely absorb Device Status Reports (CSI 5n / 6n / ?6n) silently
+    term.parser.registerCsiHandler({ final: "n" }, () => true);
+
+    // Safely absorb Device Attributes queries (CSI c / CSI 0c / CSI >0c)
+    term.parser.registerCsiHandler({ final: "c" }, () => true);
+
     // Register CSI window report handler safely (checking params.getItem or array indexing)
     term.parser.registerCsiHandler({ final: "t" }, (params) => {
       const p0 = params.getItem ? params.getItem(0) : Array.isArray(params) ? params[0] : 0;
@@ -300,14 +309,22 @@ export function TerminalWindow({
       return true;
     });
 
-    // Safely absorb unhandled Operating System Commands (OSC 0, 1, 2, 4, 10, 11, 12, 52, 104, 110, 111, 112)
-    const oscIds = [0, 1, 2, 4, 10, 11, 12, 52, 104, 110, 111, 112];
+    // Safely absorb unhandled Operating System Commands (OSC 0, 1, 2, 4, 10, 11, 12, 52, 104, 110, 111, 112, 133, 1337)
+    const oscIds = [0, 1, 2, 4, 10, 11, 12, 52, 104, 110, 111, 112, 133, 1337];
     for (const oscId of oscIds) {
       try {
         term.parser.registerOscHandler(oscId, () => true);
       } catch (e) {
         // ignore
       }
+    }
+
+    // Safely absorb unhandled Device Control Strings (DCS)
+    try {
+      term.parser.registerDcsHandler({ final: "q" }, () => true);
+      term.parser.registerDcsHandler({ final: "r" }, () => true);
+    } catch (e) {
+      // ignore
     }
 
     const handleResize = () => {
