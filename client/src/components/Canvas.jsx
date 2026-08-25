@@ -2,6 +2,7 @@ import {
   Circle,
   Canvas as FabricCanvas,
   Group,
+  Polygon,
   Polyline,
   Rect,
   Shadow,
