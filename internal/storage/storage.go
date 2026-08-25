@@ -2,7 +2,6 @@ package storage
 
 import (
 	"archive/zip"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -337,16 +336,18 @@ func (s *Storage) DeleteProject(id string) error {
 	return os.RemoveAll(pDir)
 }
 
-// ImportTemplateZip extracts a ZIP archive into s.DevicesDir() ($HOME/.netlabctl/devices/).
-func (s *Storage) ImportTemplateZip(zipData []byte) error {
-	r, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+// ImportTemplateZipFile extracts a ZIP archive file directly from disk into s.DevicesDir() ($HOME/.netlabctl/devices/).
+// Supports large ZIP files (up to 2GB+).
+func (s *Storage) ImportTemplateZipFile(zipFilePath string) error {
+	zr, err := zip.OpenReader(zipFilePath)
 	if err != nil {
 		return fmt.Errorf("invalid zip archive: %w", err)
 	}
+	defer zr.Close()
 
 	devicesDir := filepath.Clean(s.DevicesDir())
 
-	for _, f := range r.File {
+	for _, f := range zr.File {
 		cleanName := filepath.Clean(f.Name)
 		if strings.HasPrefix(cleanName, "..") || strings.Contains(cleanName, ":") {
 			continue
@@ -389,4 +390,23 @@ func (s *Storage) ImportTemplateZip(zipData []byte) error {
 
 	logger.Log.Info("Successfully imported device template ZIP archive into devices directory", "devicesDir", devicesDir)
 	return nil
+}
+
+// ImportTemplateZip extracts an in-memory ZIP byte slice into s.DevicesDir() ($HOME/.netlabctl/devices/).
+func (s *Storage) ImportTemplateZip(zipData []byte) error {
+	tmpFile, err := os.CreateTemp("", "netlabctl_zip_*.zip")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary zip file: %w", err)
+	}
+	defer func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
+	}()
+
+	if _, err := tmpFile.Write(zipData); err != nil {
+		return fmt.Errorf("failed to write temporary zip data: %w", err)
+	}
+	_ = tmpFile.Close()
+
+	return s.ImportTemplateZipFile(tmpFile.Name())
 }
