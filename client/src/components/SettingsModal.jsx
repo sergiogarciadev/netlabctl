@@ -1,7 +1,83 @@
-import { Bug, Settings, X } from "lucide-react";
+import {
+  AlertCircle,
+  Bug,
+  CheckCircle2,
+  FileArchive,
+  Loader2,
+  Settings,
+  UploadCloud,
+  X,
+} from "lucide-react";
+import { useRef, useState } from "react";
+import { importTemplateZip } from "../services/api";
 
-export function SettingsModal({ isOpen, onClose, config, onUpdateConfig }) {
+export function SettingsModal({ isOpen, onClose, config, onUpdateConfig, onImportSuccess }) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState(null);
+  const fileInputRef = useRef(null);
+
   if (!isOpen) return null;
+
+  const handleProcessFile = async (file) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      setUploadStatus({
+        type: "error",
+        message: "Only .zip files are supported for device template import.",
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadStatus(null);
+
+    try {
+      const res = await importTemplateZip(file);
+      setIsUploading(false);
+      setUploadStatus({
+        type: "success",
+        message: res.message || "Template archive imported successfully!",
+      });
+      if (onImportSuccess) {
+        onImportSuccess(res.templates);
+      }
+    } catch (err) {
+      setIsUploading(false);
+      setUploadStatus({
+        type: "error",
+        message: err.message || "Failed to import template archive.",
+      });
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleProcessFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleProcessFile(e.target.files[0]);
+    }
+  };
 
   return (
     <div
@@ -123,6 +199,135 @@ export function SettingsModal({ isOpen, onClose, config, onUpdateConfig }) {
               }}
             />
           </div>
+
+          {/* Section: Import Device Templates */}
+          <div
+            style={{
+              fontWeight: 600,
+              fontSize: "0.85rem",
+              color: "var(--text-muted)",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+              marginTop: "8px",
+            }}
+          >
+            Device Templates
+          </div>
+
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".zip"
+            style={{ display: "none" }}
+          />
+
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && fileInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            style={{
+              background: isDragging ? "rgba(56, 189, 248, 0.15)" : "rgba(15, 23, 42, 0.6)",
+              border: isDragging ? "2px dashed #38bdf8" : "2px dashed var(--border-color)",
+              borderRadius: "8px",
+              padding: "24px 16px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+            }}
+          >
+            {isUploading ? (
+              <>
+                <Loader2
+                  size={32}
+                  style={{ color: "#38bdf8", animation: "spin 1s linear infinite" }}
+                />
+                <div style={{ fontSize: "0.9rem", color: "var(--text-main)", fontWeight: 500 }}>
+                  Extracting & Importing Template ZIP...
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    width: "44px",
+                    height: "44px",
+                    borderRadius: "50%",
+                    background: "rgba(56, 189, 248, 0.1)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <UploadCloud size={24} style={{ color: "#38bdf8" }} />
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: "0.9rem", color: "var(--text-main)", fontWeight: 600 }}>
+                    Drag & Drop Device Template ZIP
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                    or{" "}
+                    <span style={{ color: "#38bdf8", textDecoration: "underline" }}>
+                      browse files
+                    </span>{" "}
+                    on your machine
+                  </div>
+                </div>
+                <div
+                  style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontStyle: "italic" }}
+                >
+                  Extracts template files into{" "}
+                  <code
+                    style={{
+                      background: "rgba(0,0,0,0.4)",
+                      padding: "2px 4px",
+                      borderRadius: "3px",
+                    }}
+                  >
+                    ~/.netlabctl/devices
+                  </code>
+                </div>
+              </>
+            )}
+          </div>
+
+          {uploadStatus && (
+            <div
+              style={{
+                background:
+                  uploadStatus.type === "success"
+                    ? "rgba(34, 197, 94, 0.15)"
+                    : "rgba(239, 68, 68, 0.15)",
+                border: `1px solid ${
+                  uploadStatus.type === "success"
+                    ? "rgba(34, 197, 94, 0.4)"
+                    : "rgba(239, 68, 68, 0.4)"
+                }`,
+                borderRadius: "8px",
+                padding: "10px 14px",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                fontSize: "0.85rem",
+                color: uploadStatus.type === "success" ? "#4ade80" : "#f87171",
+              }}
+            >
+              {uploadStatus.type === "success" ? (
+                <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
+              ) : (
+                <AlertCircle size={18} style={{ flexShrink: 0 }} />
+              )}
+              <div style={{ flex: 1 }}>{uploadStatus.message}</div>
+            </div>
+          )}
         </div>
 
         <div

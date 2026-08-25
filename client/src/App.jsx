@@ -638,6 +638,13 @@ export function App() {
           onClose={() => setIsSettingsOpen(false)}
           config={config}
           onUpdateConfig={handleUpdateConfig}
+          onImportSuccess={(newTemplates) => {
+            if (newTemplates) {
+              setTemplates(newTemplates);
+            } else {
+              fetchTemplates().then(setTemplates).catch(console.error);
+            }
+          }}
         />
 
         {activeTerminalNodes.length > 0 &&

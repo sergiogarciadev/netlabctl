@@ -12,6 +12,23 @@ export async function fetchTemplateDrawing(templateId) {
   return res.text();
 }
 
+export async function importTemplateZip(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("/api/templates/import", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Failed to import template ZIP archive");
+  }
+
+  return res.json();
+}
+
 export async function fetchProjects() {
   const res = await fetch("/api/projects");
   if (!res.ok) throw new Error("Failed to fetch projects");

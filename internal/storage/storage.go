@@ -1,8 +1,11 @@
 package storage
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -332,4 +335,58 @@ func (s *Storage) SaveProject(top *model.Topology) error {
 func (s *Storage) DeleteProject(id string) error {
 	pDir := s.ProjectDir(id)
 	return os.RemoveAll(pDir)
+}
+
+// ImportTemplateZip extracts a ZIP archive into s.DevicesDir() ($HOME/.netlabctl/devices/).
+func (s *Storage) ImportTemplateZip(zipData []byte) error {
+	r, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return fmt.Errorf("invalid zip archive: %w", err)
+	}
+
+	devicesDir := filepath.Clean(s.DevicesDir())
+
+	for _, f := range r.File {
+		cleanName := filepath.Clean(f.Name)
+		if strings.HasPrefix(cleanName, "..") || strings.Contains(cleanName, ":") {
+			continue
+		}
+
+		targetPath := filepath.Join(devicesDir, cleanName)
+		if !strings.HasPrefix(filepath.Clean(targetPath), devicesDir+string(filepath.Separator)) && filepath.Clean(targetPath) != devicesDir {
+			return fmt.Errorf("illegal file path in zip: %s", f.Name)
+		}
+
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			return fmt.Errorf("failed to create parent directory for %s: %w", targetPath, err)
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("failed to open zip entry %s: %w", f.Name, err)
+		}
+
+		outFile, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			_ = rc.Close()
+			return fmt.Errorf("failed to create target file %s: %w", targetPath, err)
+		}
+
+		_, err = io.Copy(outFile, rc)
+		_ = outFile.Close()
+		_ = rc.Close()
+		if err != nil {
+			return fmt.Errorf("failed to extract zip entry %s: %w", targetPath, err)
+		}
+	}
+
+	logger.Log.Info("Successfully imported device template ZIP archive into devices directory", "devicesDir", devicesDir)
+	return nil
 }

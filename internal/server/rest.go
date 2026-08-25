@@ -3,7 +3,9 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"netlabctl/internal/logger"
@@ -19,6 +21,60 @@ func (s *Server) handleListTemplates(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(templates)
+}
+
+func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request) {
+	var zipData []byte
+	var err error
+
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			http.Error(w, "Failed to parse multipart form", http.StatusBadRequest)
+			return
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "Missing file field in form data", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		zipData, err = io.ReadAll(file)
+		if err != nil {
+			http.Error(w, "Failed to read uploaded file", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		zipData, err = io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if len(zipData) == 0 {
+		http.Error(w, "Uploaded ZIP file is empty", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.storage.ImportTemplateZip(zipData); err != nil {
+		logger.Log.Error("Failed to import template ZIP", "error", err)
+		http.Error(w, fmt.Sprintf("Failed to import template: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	templates, err := s.storage.ListTemplates()
+	if err != nil {
+		logger.Log.Error("Failed to list templates after import", "error", err)
+		http.Error(w, "Template imported but failed to list templates", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":   "Template imported successfully",
+		"templates": templates,
+	})
 }
 
 func (s *Server) handleGetTemplateDrawing(w http.ResponseWriter, r *http.Request) {

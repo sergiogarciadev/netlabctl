@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -81,5 +83,50 @@ func TestStorageInitializationAndTemplateLoading(t *testing.T) {
 
 	if loadedTop.Name != "Test Project" || len(loadedTop.Nodes) != 1 {
 		t.Fatalf("Loaded topology mismatch: %+v", loadedTop)
+	}
+}
+
+func TestImportTemplateZip(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "netlabctl_zip_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	s, err := NewStorage(tempDir)
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
+
+	buf := new(bytes.Buffer)
+	zw := zip.NewWriter(buf)
+
+	f1, _ := zw.Create("Cisco-Custom/machine.json")
+	_, _ = f1.Write([]byte(`{"id":"Cisco-Custom","name":"Cisco Custom Router"}`))
+
+	f2, _ := zw.Create("Cisco-Custom/drawing.svg")
+	_, _ = f2.Write([]byte(`<svg></svg>`))
+
+	_ = zw.Close()
+
+	if err := s.ImportTemplateZip(buf.Bytes()); err != nil {
+		t.Fatalf("ImportTemplateZip failed: %v", err)
+	}
+
+	tmpls, err := s.ListTemplates()
+	if err != nil {
+		t.Fatalf("ListTemplates failed: %v", err)
+	}
+
+	found := false
+	for _, tmpl := range tmpls {
+		if tmpl.ID == "Cisco-Custom" {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("Expected imported template Cisco-Custom in template list")
 	}
 }
