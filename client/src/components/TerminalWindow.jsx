@@ -197,6 +197,7 @@ export function TerminalWindow({
 
     term.open(terminalRef.current);
     fitAddon.fit();
+    setTermDimensions({ rows: term.rows, cols: term.cols });
 
     const host =
       window.location.port === "3000" ? `${window.location.hostname}:8080` : window.location.host;
@@ -244,7 +245,10 @@ export function TerminalWindow({
       return false;
     });
 
-    const handleResize = () => fitAddon.fit();
+    const handleResize = () => {
+      fitAddon.fit();
+      setTermDimensions({ rows: term.rows, cols: term.cols });
+    };
     window.addEventListener("resize", handleResize);
 
     const resizeObserver = new ResizeObserver(() => {
@@ -252,6 +256,7 @@ export function TerminalWindow({
         if (fitAddonRef.current) {
           try {
             fitAddonRef.current.fit();
+            setTermDimensions({ rows: term.rows, cols: term.cols });
           } catch (err) {
             // ignore fit errors during disposal
           }
