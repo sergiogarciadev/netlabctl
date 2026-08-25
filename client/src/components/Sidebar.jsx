@@ -56,25 +56,6 @@ export function Sidebar({
     }
   }, [selectedNode, templates]);
 
-  if (!selectedNode) return null;
-
-  const tmpl = templates.find((t) => t.id === selectedNode.templateId);
-  const systemType =
-    tmpl?.system || tmpl?.status?.type || tmpl?.status?.name || "qemu-system-x86_64";
-  const diskImage = tmpl?.image || tmpl?.disk || tmpl?.qcow2 || "chr-7.21.5.qcow2";
-
-  const handleSaveNodeProperties = () => {
-    onUpdateNode({
-      ...selectedNode,
-      name,
-      memory: Number(memory) || 512,
-      smp: Number(smp) || 1,
-      userdata,
-      metadata,
-    });
-    setIsEditingName(false);
-  };
-
   const portWireMap = useMemo(() => {
     if (!selectedNode || !wires || !nodes) return new Map();
     const nodeMap = new Map((nodes || []).map((n) => [n.id, n]));
@@ -103,6 +84,25 @@ export function Sidebar({
     }
     return map;
   }, [selectedNode, wires, nodes]);
+
+  if (!selectedNode) return null;
+
+  const tmpl = templates.find((t) => t.id === selectedNode.templateId);
+  const systemType =
+    tmpl?.system || tmpl?.status?.type || tmpl?.status?.name || "qemu-system-x86_64";
+  const diskImage = tmpl?.image || tmpl?.disk || tmpl?.qcow2 || "chr-7.21.5.qcow2";
+
+  const handleSaveNodeProperties = () => {
+    onUpdateNode({
+      ...selectedNode,
+      name,
+      memory: Number(memory) || 512,
+      smp: Number(smp) || 1,
+      userdata,
+      metadata,
+    });
+    setIsEditingName(false);
+  };
 
   const getConnectedWireInfo = (portId) => {
     return (
