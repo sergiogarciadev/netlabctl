@@ -443,15 +443,7 @@ func (h *WSHub) startProjectSimulation(projectID string) {
 
 	go func() {
 		time.Sleep(1 * time.Second) // Give QEMU instances 1s to open monitor sockets
-		for _, node := range top.Nodes {
-			if startedNodes[node.ID] {
-				for i, port := range node.Ports {
-					devID := fmt.Sprintf("eth%d", i)
-					isConn := connectedPorts[port.ID]
-					_ = h.qemuMgr.SetPortLinkStatus(projectID, node.ID, devID, isConn)
-				}
-			}
-		}
+		h.SyncTopologyNetworkAndMonitors(top)
 	}()
 
 	// 4. Update and save project simulation status
@@ -516,11 +508,7 @@ func (h *WSHub) startSingleNode(projectID string, nodeID string) {
 
 	go func() {
 		time.Sleep(1 * time.Second)
-		for i, port := range targetNode.Ports {
-			devID := fmt.Sprintf("eth%d", i)
-			isConn := connectedPorts[port.ID]
-			_ = h.qemuMgr.SetPortLinkStatus(projectID, targetNode.ID, devID, isConn)
-		}
+		h.SyncTopologyNetworkAndMonitors(top)
 	}()
 
 	_ = h.storage.SaveProject(top)
@@ -652,9 +640,20 @@ func (h *WSHub) SyncTopologyNetworkAndMonitors(top *model.Topology) {
 		for i, port := range node.Ports {
 			devID := fmt.Sprintf("eth%d", i)
 			portKey := fmt.Sprintf("%s:%s", node.ID, port.ID)
-			isConn := connectedPorts[portKey]
 
-			_ = h.qemuMgr.SetPortLinkStatus(top.ID, node.ID, devID, isConn)
+			pType := port.Type
+			if pType == "" {
+				pType = "managed"
+			}
+
+			// Unmanaged/non-managed interfaces (user, bridge, tap, unmanaged) are ALWAYS set to link UP ('on').
+			// Managed interfaces are set to link UP ('on') if connected to a wire in the topology.
+			linkOn := true
+			if pType == "managed" {
+				linkOn = connectedPorts[portKey]
+			}
+
+			_ = h.qemuMgr.SetPortLinkStatus(top.ID, node.ID, devID, linkOn)
 		}
 	}
 }
