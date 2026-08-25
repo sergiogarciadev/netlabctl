@@ -16,7 +16,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export function Sidebar({
   selectedNode,
@@ -75,28 +75,44 @@ export function Sidebar({
     setIsEditingName(false);
   };
 
+  const portWireMap = useMemo(() => {
+    if (!selectedNode || !wires || !nodes) return new Map();
+    const nodeMap = new Map((nodes || []).map((n) => [n.id, n]));
+    const map = new Map();
+
+    for (const wire of wires || []) {
+      if (wire.srcNodeId === selectedNode.id) {
+        const remoteNode = nodeMap.get(wire.dstNodeId);
+        const remotePort = remoteNode?.ports?.find((p) => p.id === wire.dstPortId);
+        map.set(wire.srcPortId, {
+          isConnected: true,
+          wire,
+          remoteNode,
+          remotePortName: remotePort ? remotePort.name : wire.dstPortId,
+        });
+      } else if (wire.dstNodeId === selectedNode.id) {
+        const remoteNode = nodeMap.get(wire.srcNodeId);
+        const remotePort = remoteNode?.ports?.find((p) => p.id === wire.srcPortId);
+        map.set(wire.dstPortId, {
+          isConnected: true,
+          wire,
+          remoteNode,
+          remotePortName: remotePort ? remotePort.name : wire.srcPortId,
+        });
+      }
+    }
+    return map;
+  }, [selectedNode, wires, nodes]);
+
   const getConnectedWireInfo = (portId) => {
-    const wire = wires.find(
-      (w) =>
-        (w.srcNodeId === selectedNode.id && w.srcPortId === portId) ||
-        (w.dstNodeId === selectedNode.id && w.dstPortId === portId),
+    return (
+      portWireMap.get(portId) || {
+        isConnected: false,
+        wire: null,
+        remoteNode: null,
+        remotePortName: null,
+      }
     );
-
-    if (!wire) return { isConnected: false, wire: null, remoteNode: null, remotePortName: null };
-
-    const isSrc = wire.srcNodeId === selectedNode.id && wire.srcPortId === portId;
-    const remoteNodeId = isSrc ? wire.dstNodeId : wire.srcNodeId;
-    const remotePortId = isSrc ? wire.dstPortId : wire.srcPortId;
-
-    const remoteNode = nodes.find((n) => n.id === remoteNodeId);
-    const remotePort = remoteNode?.ports?.find((p) => p.id === remotePortId);
-
-    return {
-      isConnected: true,
-      wire,
-      remoteNode,
-      remotePortName: remotePort ? remotePort.name : remotePortId,
-    };
   };
 
   const handlePortDriverChange = (portId, newDriver) => {
