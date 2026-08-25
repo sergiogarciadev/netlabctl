@@ -173,7 +173,13 @@ export function TerminalWindow({
   }, [handleWindowMouseMove, handleWindowMouseUp]);
 
   const nodeId = node?.id;
-  const nodeName = node?.name;
+  const isNodeRunning = node?.power === "on" || node?.status === "running";
+  const isNodeRunningRef = useRef(isNodeRunning);
+  const connectWebSocketRef = useRef(null);
+
+  useEffect(() => {
+    isNodeRunningRef.current = isNodeRunning;
+  }, [isNodeRunning]);
 
   useEffect(() => {
     if (!nodeId || !terminalRef.current) return;
@@ -218,15 +224,26 @@ export function TerminalWindow({
     };
 
     const connectWebSocket = () => {
-      if (isDisposed) return;
+      if (isDisposed || socket) return;
+      if (!isNodeRunningRef.current) {
+        term.write(
+          "\r\n\x1b[33mMachine is powered off. Waiting for machine to start...\x1b[0m\r\n",
+        );
+        return;
+      }
 
       const host =
         window.location.port === "3000" ? `${window.location.hostname}:8080` : window.location.host;
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${protocol}//${host}/api/v1/projects/${projectId || "default"}/nodes/${nodeId}/terminal`;
 
-      socket = new WebSocket(wsUrl);
-      socket.binaryType = "arraybuffer";
+      try {
+        socket = new WebSocket(wsUrl);
+        socket.binaryType = "arraybuffer";
+      } catch (err) {
+        console.warn("[TERMINAL] Failed to create WebSocket:", err);
+        return;
+      }
 
       socket.onopen = () => {
         if (isDisposed) return;
@@ -261,8 +278,15 @@ export function TerminalWindow({
       };
 
       socket.onclose = () => {
+        socket = null;
         if (!isDisposed) {
-          reconnectTimeout = setTimeout(connectWebSocket, 2000);
+          if (isNodeRunningRef.current) {
+            reconnectTimeout = setTimeout(connectWebSocket, 2000);
+          } else {
+            term.write(
+              "\r\n\x1b[33mMachine is powered off. Waiting for machine to start...\x1b[0m\r\n",
+            );
+          }
         }
       };
 
@@ -277,7 +301,13 @@ export function TerminalWindow({
       };
     };
 
-    connectWebSocket();
+    connectWebSocketRef.current = connectWebSocket;
+
+    if (isNodeRunningRef.current) {
+      connectWebSocket();
+    } else {
+      term.write("\r\n\x1b[33mMachine is powered off. Waiting for machine to start...\x1b[0m\r\n");
+    }
 
     term.onData((data) => {
       if (socket && socket.readyState === WebSocket.OPEN) {
@@ -364,6 +394,13 @@ export function TerminalWindow({
       term.dispose();
     };
   }, [projectId, nodeId]);
+
+  // Auto-connect when machine powers on
+  useEffect(() => {
+    if (isNodeRunning && connectWebSocketRef.current) {
+      connectWebSocketRef.current();
+    }
+  }, [isNodeRunning]);
 
   // Floating Detached Window Style vs Docked Bottom Window Style
   const detachedStyle = {
