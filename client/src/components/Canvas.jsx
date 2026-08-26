@@ -1313,6 +1313,12 @@ function calculatePathLength(points) {
   return len;
 }
 
+function parsePortNum(idStr) {
+  if (typeof idStr === "number") return idStr;
+  const num = Number.parseInt(String(idStr).replace(/\D/g, ""), 10);
+  return Number.isNaN(num) ? 1 : num;
+}
+
 // Shortest-Path Manhattan 90-degree orthogonal polyline routing algorithm:
 // Evaluates tight local bottom channels, vertical midpoints, and side bypasses
 function calculateShortestOrthogonalPath(
@@ -1328,11 +1334,6 @@ function calculateShortestOrthogonalPath(
   const y1 = p1.y;
   const x2 = p2.x;
   const y2 = p2.y;
-
-  const parsePortNum = (idStr) => {
-    const num = Number.parseInt(String(idStr).replace(/\D/g, ""), 10);
-    return Number.isNaN(num) ? 1 : num;
-  };
 
   const p1Num = parsePortNum(srcPortId);
   const p2Num = parsePortNum(dstPortId);
