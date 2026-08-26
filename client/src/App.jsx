@@ -402,6 +402,10 @@ export function App() {
       if (msg.type === "project_state") {
         console.log("[NETLAB-APP-DEBUG] Received WS project_state:", msg.data);
         updateProjectState(msg.data);
+      } else if (msg.type === "wire_stats") {
+        if (msg.data?.stats && Array.isArray(msg.data.stats)) {
+          setWireStats(msg.data.stats);
+        }
       } else if (msg.type === "error") {
         console.error("[NETLAB-APP-DEBUG] Received WS error message:", msg.data);
         const text =
