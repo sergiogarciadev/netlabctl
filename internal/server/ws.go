@@ -575,13 +575,19 @@ func (h *WSHub) recreateSingleNodeDisk(projectID string, nodeID string) error {
 	return fmt.Errorf("node not found: %s", nodeID)
 }
 
-func (h *WSHub) handleNodeExit(projectID, nodeID string) {
+func (h *WSHub) handleNodeExit(projectID, nodeID string, exitErr error) {
 	top, err := h.storage.GetProject(projectID)
 	if err == nil {
 		updated := false
+		nodeName := nodeID
 		for i := range top.Nodes {
 			if top.Nodes[i].ID == nodeID {
-				if top.Nodes[i].Status != "stopped" || top.Nodes[i].Power != "off" {
+				nodeName = top.Nodes[i].Name
+				if exitErr != nil {
+					top.Nodes[i].Status = "error"
+					top.Nodes[i].Power = "off"
+					updated = true
+				} else if top.Nodes[i].Status != "stopped" || top.Nodes[i].Power != "off" {
 					top.Nodes[i].Status = "stopped"
 					top.Nodes[i].Power = "off"
 					updated = true
@@ -592,6 +598,12 @@ func (h *WSHub) handleNodeExit(projectID, nodeID string) {
 		if updated {
 			_ = h.storage.SaveProject(top)
 			h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
+			if exitErr != nil {
+				h.BroadcastToProject(projectID, "error", map[string]string{
+					"message": fmt.Sprintf("Node %s (%s) process exited with error: %v", nodeName, nodeID, exitErr),
+					"nodeId":  nodeID,
+				})
+			}
 		}
 	}
 }

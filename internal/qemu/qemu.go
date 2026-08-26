@@ -1,6 +1,7 @@
 package qemu
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -13,6 +14,36 @@ import (
 	"netlabctl/internal/logger"
 	"netlabctl/internal/model"
 )
+
+type safeLogBuffer struct {
+	mu   sync.Mutex
+	buf  bytes.Buffer
+	file *os.File
+}
+
+func (w *safeLogBuffer) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.file != nil {
+		_, _ = w.file.Write(p)
+	}
+	return w.buf.Write(p)
+}
+
+func (w *safeLogBuffer) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.String()
+}
+
+func dumpQEMUErrorOutput(nodeID, nodeName string, err error, output string) {
+	cleanOutput := strings.TrimSpace(output)
+	if cleanOutput == "" {
+		cleanOutput = "(no output captured on stdout/stderr)"
+	}
+	fmt.Fprintf(os.Stderr, "\n========================================\n[QEMU ERROR] Node %q (%s) failed to start or exited with error:\nError: %v\nOutput:\n%s\n========================================\n\n", nodeName, nodeID, err, cleanOutput)
+	logger.Log.Error("QEMU process error", "nodeID", nodeID, "nodeName", nodeName, "error", err, "output", cleanOutput)
+}
 
 type NodeInstance struct {
 	NodeID          string
@@ -28,7 +59,7 @@ type Manager struct {
 	baseDir    string
 	mu         sync.Mutex
 	instances  map[string]*NodeInstance
-	OnNodeExit func(projectID, nodeID string)
+	OnNodeExit func(projectID, nodeID string, err error)
 }
 
 func NewManager(baseDir string) *Manager {
@@ -314,17 +345,22 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 	cmd := exec.Command(qemuPath, args...)
 	cmd.Dir = nDir
 
-	logFile, logErr := os.Create(filepath.Join(nDir, "qemu.log"))
-	if logErr == nil {
-		cmd.Stdout = logFile
-		cmd.Stderr = logFile
-	}
+	logFile, _ := os.Create(filepath.Join(nDir, "qemu.log"))
+	logBuffer := &safeLogBuffer{file: logFile}
+
+	cmd.Stdout = logBuffer
+	cmd.Stderr = logBuffer
 
 	if err := cmd.Start(); err != nil {
 		if logFile != nil {
 			_ = logFile.Close()
 		}
-		logger.Log.Error("Failed to start QEMU instance", "nodeID", node.ID, "error", err)
+		outStr := logBuffer.String()
+		dumpQEMUErrorOutput(node.ID, node.Name, err, outStr)
+		cleanOut := strings.TrimSpace(outStr)
+		if cleanOut != "" {
+			return nil, fmt.Errorf("failed to start QEMU: %w (%s)", err, cleanOut)
+		}
 		return nil, fmt.Errorf("failed to start QEMU: %w", err)
 	}
 
@@ -338,6 +374,8 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		IsRunning:       true,
 	}
 
+	exitChan := make(chan error, 1)
+
 	go func() {
 		err := cmd.Wait()
 		if logFile != nil {
@@ -347,16 +385,37 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		inst.IsRunning = false
 		m.mu.Unlock()
 
+		var exitErr error
 		if err != nil {
-			logger.Log.Warn("QEMU process exited with error", "nodeID", node.ID, "error", err)
+			outStr := logBuffer.String()
+			dumpQEMUErrorOutput(node.ID, node.Name, err, outStr)
+			cleanOut := strings.TrimSpace(outStr)
+			if cleanOut != "" {
+				exitErr = fmt.Errorf("%w (%s)", err, cleanOut)
+			} else {
+				exitErr = err
+			}
+			exitChan <- exitErr
 		} else {
 			logger.Log.Info("QEMU process exited cleanly", "nodeID", node.ID)
+			exitChan <- nil
 		}
 
 		if m.OnNodeExit != nil {
-			m.OnNodeExit(projectID, node.ID)
+			m.OnNodeExit(projectID, node.ID, exitErr)
 		}
 	}()
+
+	// Wait up to 500ms to detect instant QEMU startup failures (e.g. invalid arguments or missing dependencies)
+	select {
+	case err := <-exitChan:
+		if err != nil {
+			delete(m.instances, node.ID)
+			return nil, fmt.Errorf("QEMU startup failed for node %q: %w", node.Name, err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		// Process survived initial startup window
+	}
 
 	m.instances[node.ID] = inst
 	logger.Log.Info("Started QEMU instance for node", "nodeID", node.ID, "pid", cmd.Process.Pid)
