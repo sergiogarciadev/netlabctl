@@ -1026,8 +1026,14 @@ export function Canvas({
 
 // Check if targetGroup collides with or violates the 100px vertical clearance requirement of any other device
 function checkDeviceCollision(targetGroup, allGroups) {
-  const targetWidth = targetGroup.width || 120;
-  const targetHeight = targetGroup.height || 50;
+  const targetWidth =
+    typeof targetGroup.getScaledWidth === "function"
+      ? targetGroup.getScaledWidth()
+      : (targetGroup.width || 120) * (targetGroup.scaleX || 1);
+  const targetHeight =
+    typeof targetGroup.getScaledHeight === "function"
+      ? targetGroup.getScaledHeight()
+      : (targetGroup.height || 50) * (targetGroup.scaleY || 1);
 
   const minHorizontalGap = 20;
   const minVerticalGap = 100; // Must have at least 100px vertical clearance between vertically aligned devices
@@ -1040,8 +1046,14 @@ function checkDeviceCollision(targetGroup, allGroups) {
   for (const other of allGroups) {
     if (other === targetGroup || !other.isNodeGroup) continue;
 
-    const otherWidth = other.width || 120;
-    const otherHeight = other.height || 50;
+    const otherWidth =
+      typeof other.getScaledWidth === "function"
+        ? other.getScaledWidth()
+        : (other.width || 120) * (other.scaleX || 1);
+    const otherHeight =
+      typeof other.getScaledHeight === "function"
+        ? other.getScaledHeight()
+        : (other.height || 50) * (other.scaleY || 1);
 
     const oLeft = other.left;
     const oRight = oLeft + otherWidth;
@@ -1074,10 +1086,20 @@ function checkDeviceCollision(targetGroup, allGroups) {
 function getNodeBoundingBox(group) {
   if (!group) return null;
   const padding = 8;
+  const rawWidth =
+    typeof group.getScaledWidth === "function"
+      ? group.getScaledWidth()
+      : (group.width || 120) * (group.scaleX || 1);
+  const rawHeight =
+    typeof group.getScaledHeight === "function"
+      ? group.getScaledHeight()
+      : (group.height || 50) * (group.scaleY || 1);
+
   const left = group.left - padding;
   const top = group.top - padding;
-  const width = (group.width || 120) + padding * 2;
-  const height = (group.height || 50) + padding * 2;
+  const width = rawWidth + padding * 2;
+  const height = rawHeight + padding * 2;
+
   return {
     left,
     top,

@@ -497,7 +497,7 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.X == 0 && req.Y == 0 {
-		req.X, req.Y = findFreeNodePosition(top.Nodes)
+		req.X, req.Y = findFreeNodePosition(tmpl, top.Nodes)
 	}
 
 	newNode := model.Node{
@@ -640,30 +640,49 @@ func (s *Server) handleStopProjectSimulation(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(map[string]string{"status": "stopped", "projectId": id})
 }
 
-func findFreeNodePosition(nodes []model.Node) (float64, float64) {
+func getDeviceWidth(node model.Node) float64 {
+	portsCount := len(node.Ports)
+	if portsCount == 0 {
+		portsCount = 4
+	}
+	w := float64(portsCount)*28.0 + 30.0
+	if w < 140.0 {
+		w = 140.0
+	}
+	return w
+}
+
+func findFreeNodePosition(tmpl *model.MachineTemplate, nodes []model.Node) (float64, float64) {
+	portsCount := 4
+	if tmpl != nil && len(tmpl.Ports) > 0 {
+		portsCount = len(tmpl.Ports)
+	}
+	newWidth := float64(portsCount)*28.0 + 30.0
+	if newWidth < 140.0 {
+		newWidth = 140.0
+	}
+	newHeight := 90.0
+	margin := 35.0
+
 	startX := 100.0
 	startY := 120.0
-	stepX := 240.0
 	stepY := 180.0
 	maxCols := 4
-
-	nodeWidth := 180.0
-	nodeHeight := 90.0
-	margin := 35.0
 
 	isOverlapping := func(x, y float64) bool {
 		candLeft := x - margin
 		candTop := y - margin
-		candRight := x + nodeWidth + margin
-		candBottom := y + nodeHeight + margin
+		candRight := x + newWidth + margin
+		candBottom := y + newHeight + margin
 
 		for _, node := range nodes {
 			nx := node.X
 			ny := node.Y
-			nRight := nx + nodeWidth
-			nBottom := ny + nodeHeight
+			nWidth := getDeviceWidth(node)
+			nRight := nx + nWidth
+			nBottom := ny + newHeight
 
-			overlaps := !(candRight <= nx || candLeft >= nRight || candBottom <= ny || candTop >= nBottom)
+			overlaps := !(candRight <= nx-margin || candLeft >= nRight+margin || candBottom <= ny-margin || candTop >= nBottom+margin)
 			if overlaps {
 				return true
 			}
@@ -672,15 +691,20 @@ func findFreeNodePosition(nodes []model.Node) (float64, float64) {
 	}
 
 	for r := 0; r < 50; r++ {
+		currentX := startX
 		for c := 0; c < maxCols; c++ {
-			posX := startX + float64(c)*stepX
 			posY := startY + float64(r)*stepY
-			if !isOverlapping(posX, posY) {
-				return posX, posY
+			if !isOverlapping(currentX, posY) {
+				return currentX, posY
 			}
+			stepX := newWidth + 60.0
+			if stepX < 240.0 {
+				stepX = 240.0
+			}
+			currentX += stepX
 		}
 	}
 
 	count := len(nodes)
-	return startX + float64(count%maxCols)*stepX, startY + float64(count/maxCols)*stepY
+	return startX + float64((count*40)%200), startY + float64(count/maxCols)*stepY
 }

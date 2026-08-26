@@ -500,33 +500,45 @@ export function App() {
         const proj = projectRef.current;
         const existingNodes = proj.nodes || [];
 
-        // Find a free, non-overlapping location on the canvas grid
+        // Calculate full device width based on port count (e.g. 4-port: 140px, 8-port: 250px, 16-port: 480px, 32-port: 900px, 64-port: 1800px)
+        const getDeviceWidth = (tmplOrNode) => {
+          let portsCount = 4;
+          if (tmplOrNode?.ports?.length) {
+            portsCount = tmplOrNode.ports.length;
+          } else if (tmplOrNode?.templateId) {
+            const t = (templates || []).find((tmplItem) => tmplItem.id === tmplOrNode.templateId);
+            if (t?.ports?.length) portsCount = t.ports.length;
+          }
+          return Math.max(140, portsCount * 28 + 30);
+        };
+
+        const newWidth = getDeviceWidth(tmpl);
+        const newHeight = 90;
+        const margin = 35;
+
         const startX = 100;
         const startY = 120;
-        const stepX = 240;
         const stepY = 180;
         const maxCols = 4;
-        const nodeWidth = 180;
-        const nodeHeight = 90;
-        const margin = 35;
 
         const isOverlapping = (x, y) => {
           const candLeft = x - margin;
           const candTop = y - margin;
-          const candRight = x + nodeWidth + margin;
-          const candBottom = y + nodeHeight + margin;
+          const candRight = x + newWidth + margin;
+          const candBottom = y + newHeight + margin;
 
           for (const node of existingNodes) {
             const nx = node.x || 0;
             const ny = node.y || 0;
-            const nRight = nx + nodeWidth;
-            const nBottom = ny + nodeHeight;
+            const nWidth = getDeviceWidth(node);
+            const nRight = nx + nWidth;
+            const nBottom = ny + newHeight;
 
             const overlaps = !(
-              candRight <= nx ||
-              candLeft >= nRight ||
-              candBottom <= ny ||
-              candTop >= nBottom
+              candRight <= nx - margin ||
+              candLeft >= nRight + margin ||
+              candBottom <= ny - margin ||
+              candTop >= nBottom + margin
             );
             if (overlaps) return true;
           }
@@ -538,23 +550,24 @@ export function App() {
         let foundFree = false;
 
         for (let r = 0; r < 50; r++) {
+          let currentX = startX;
           for (let c = 0; c < maxCols; c++) {
-            const cx = startX + c * stepX;
             const cy = startY + r * stepY;
-            if (!isOverlapping(cx, cy)) {
-              posX = cx;
+            if (!isOverlapping(currentX, cy)) {
+              posX = currentX;
               posY = cy;
               foundFree = true;
               break;
             }
+            currentX += Math.max(240, newWidth + 60);
           }
           if (foundFree) break;
         }
 
         if (!foundFree) {
           const count = existingNodes.length;
-          posX = startX + (count % maxCols) * stepX + ((count * 20) % 100);
-          posY = startY + Math.floor(count / maxCols) * stepY + ((count * 20) % 100);
+          posX = startX + ((count * 40) % 200);
+          posY = startY + Math.floor(count / maxCols) * stepY;
         }
 
         console.log("[NETLAB-APP-DEBUG] Adding node from template:", tmpl.id, { posX, posY });
