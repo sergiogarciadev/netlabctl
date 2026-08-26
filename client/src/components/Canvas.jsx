@@ -1733,9 +1733,19 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
             fabricObj.class = className;
           }
 
-          // Restore SVG XML text-anchor alignment and x/y positioning in Fabric v7
+          // Restore SVG XML text-anchor alignment and x/y positioning in Fabric v7 ONLY for device-name / status-name!
+          // NEVER touch port numbers or port labels!
           const tag = docElem.tagName ? docElem.tagName.toLowerCase() : "";
-          if (tag === "text" || fabricObj.type === "text" || fabricObj.type === "i-text") {
+          const isTargetNameText =
+            id === "device-name" ||
+            id === "status-name" ||
+            className?.includes("device-name") ||
+            className?.includes("status-name");
+
+          if (
+            isTargetNameText &&
+            (tag === "text" || fabricObj.type === "text" || fabricObj.type === "i-text")
+          ) {
             const textAnchor =
               docElem.getAttribute("text-anchor") || docElem.style?.textAnchor || "start";
 
