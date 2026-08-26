@@ -1615,6 +1615,16 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   const matchPortId = (elemId, port, idx) => {
     if (!elemId) return false;
     const cleanElemId = String(elemId).toLowerCase();
+    if (
+      cleanElemId === "device-ports" ||
+      cleanElemId === "ports" ||
+      cleanElemId === "device-power" ||
+      cleanElemId === "device-name" ||
+      cleanElemId === "status-power" ||
+      cleanElemId === "status-name"
+    ) {
+      return false;
+    }
     const pId = String(port.id || "").toLowerCase();
     const pName = String(port.name || "").toLowerCase();
 
@@ -1628,9 +1638,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
       cleanElemId === `port${idx + 1}` ||
       cleanElemId === `p${idx + 1}` ||
       cleanElemId === `eth${idx}` ||
-      cleanElemId === `ether${idx + 1}` ||
-      cleanElemId.endsWith(`-${pId}`) ||
-      cleanElemId.endsWith(`-${pName}`)
+      cleanElemId === `ether${idx + 1}`
     );
   };
 
