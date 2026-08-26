@@ -1772,8 +1772,19 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     );
   };
 
+  const getElemId = (targetObj) => {
+    if (!targetObj) return "";
+    if (targetObj.id) return String(targetObj.id);
+    if (targetObj.name) return String(targetObj.name);
+    if (targetObj.element && typeof targetObj.element.getAttribute === "function") {
+      const attrId = targetObj.element.getAttribute("id");
+      if (attrId) return String(attrId);
+    }
+    return "";
+  };
+
   const processElement = (obj) => {
-    const elemId = obj.id || "";
+    const elemId = getElemId(obj);
 
     const isNameElem =
       (nameItem && elemId === nameItem.id) ||
@@ -1869,6 +1880,8 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         if (port.name) {
           portElementsMap.set(port.name, obj);
         }
+        portElementsMap.set(`device-port-${port.id}`, obj);
+        portElementsMap.set(`device-port-${idx + 1}`, obj);
       }
     });
 
@@ -1913,9 +1926,16 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   }
 
   nodeGroup.isNodeGroup = true;
-  nodeGroup.nodeData = node;
   nodeGroup.getPortElement = (portId) => {
-    return portElementsMap.get(portId) || null;
+    if (!portId) return null;
+    let elem = portElementsMap.get(portId);
+    if (!elem) {
+      elem =
+        portElementsMap.get(String(portId)) ||
+        portElementsMap.get(`device-port-${portId}`) ||
+        portElementsMap.get(`port-${portId}`);
+    }
+    return elem || null;
   };
 
   nodeGroup.portRelativePositions = new Map();
