@@ -10,7 +10,7 @@ import {
   Shadow,
 } from "fabric";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchTemplateDrawing } from "../services/api";
 import { DebugPanel } from "./DebugPanel";
 
