@@ -42,8 +42,7 @@ export function Sidebar({
   const [userdata, setUserdata] = useState("");
   const [metadata, setMetadata] = useState("");
   const [activeTab, setActiveTab] = useState("hardware"); // "hardware" | "scripts" | "ports"
-  const [activeTzspPortId, setActiveTzspPortId] = useState(null);
-  const [tzspInputMap, setTzspInputMap] = useState({});
+  const [draftPortsMap, setDraftPortsMap] = useState({});
 
   useEffect(() => {
     if (selectedNode) {
@@ -54,6 +53,7 @@ export function Sidebar({
       setUserdata(selectedNode.userdata || tmpl?.userdata || "");
       setMetadata(selectedNode.metadata || tmpl?.metadata || "");
       setIsEditingName(false);
+      setDraftPortsMap({});
     }
   }, [selectedNode, templates]);
 
@@ -116,35 +116,68 @@ export function Sidebar({
     );
   };
 
-  const handlePortDriverChange = (portId, newDriver) => {
-    const updatedPorts = (selectedNode.ports || []).map((p) =>
-      p.id === portId ? { ...p, netdevDriver: newDriver } : p,
-    );
-    onUpdateNode({
-      ...selectedNode,
-      ports: updatedPorts,
-    });
-  };
+  const isPoweredOn =
+    selectedNode?.power === "on" ||
+    selectedNode?.status === "running" ||
+    selectedNode?.isPoweredOn === true;
 
   const handlePortPropertyChange = (portId, key, value) => {
-    const updatedPorts = (selectedNode.ports || []).map((p) =>
-      p.id === portId ? { ...p, [key]: value } : p,
-    );
+    const origPort = (selectedNode.ports || []).find((p) => p.id === portId) || { id: portId };
+    const currentPort = draftPortsMap[portId] || origPort;
+    const updatedPort = { ...currentPort, [key]: value };
+
+    if (isPoweredOn) {
+      setDraftPortsMap((prev) => ({
+        ...prev,
+        [portId]: updatedPort,
+      }));
+    } else {
+      const updatedPorts = (selectedNode.ports || []).map((p) =>
+        p.id === portId ? updatedPort : p,
+      );
+      onUpdateNode({
+        ...selectedNode,
+        ports: updatedPorts,
+      });
+    }
+  };
+
+  const handleConnectPort = (portId) => {
+    const origPort = (selectedNode.ports || []).find((p) => p.id === portId) || { id: portId };
+    const draftPort = draftPortsMap[portId] || origPort;
+    const updatedPort = { ...draftPort, linkState: "on" };
+
+    const updatedPorts = (selectedNode.ports || []).map((p) => (p.id === portId ? updatedPort : p));
+
+    setDraftPortsMap((prev) => {
+      const next = { ...prev };
+      delete next[portId];
+      return next;
+    });
+
     onUpdateNode({
       ...selectedNode,
       ports: updatedPorts,
     });
   };
 
-  const handleSaveTzspForPort = (portId, wire) => {
-    const targetAddr = tzspInputMap[portId] || "127.0.0.1:37008";
-    if (wire && onUpdateWire) {
-      onUpdateWire({
-        ...wire,
-        tzspTarget: targetAddr,
-      });
-    }
-    setActiveTzspPortId(null);
+  const handleDisconnectPort = (portId) => {
+    const origPort = (selectedNode.ports || []).find((p) => p.id === portId) || { id: portId };
+    const draftPort = draftPortsMap[portId] || origPort;
+    const updatedPort = { ...draftPort, linkState: "off" };
+
+    const updatedPorts = (selectedNode.ports || []).map((p) => (p.id === portId ? updatedPort : p));
+
+    setDraftPortsMap((prev) => {
+      const next = { ...prev };
+      delete next[portId];
+      return next;
+    });
+
+    onUpdateNode({
+      ...selectedNode,
+      ports: updatedPorts,
+    });
   };
 
   return (
@@ -690,6 +723,10 @@ export function Sidebar({
             const { isConnected, wire, remoteNode, remotePortName } = getConnectedWireInfo(port.id);
             const isEditingTzsp = activeTzspPortId === port.id;
 
+            const activePort = draftPortsMap[port.id] || port;
+            const hasPendingDraft = !!draftPortsMap[port.id];
+            const isLinkOn = activePort.linkState !== "off";
+
             return (
               <div
                 key={port.id}
@@ -697,7 +734,7 @@ export function Sidebar({
                   padding: "10px",
                   background: "var(--bg-card)",
                   borderRadius: "6px",
-                  border: "1px solid var(--border-color)",
+                  border: hasPendingDraft ? "1px solid #f59e0b" : "1px solid var(--border-color)",
                   fontSize: "0.85rem",
                 }}
               >
@@ -709,12 +746,28 @@ export function Sidebar({
                     alignItems: "center",
                   }}
                 >
-                  <span>{port.name}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>{activePort.name}</span>
+                    {hasPendingDraft && isPoweredOn && (
+                      <span
+                        style={{
+                          fontSize: "0.65rem",
+                          background: "rgba(245, 158, 11, 0.15)",
+                          color: "#f59e0b",
+                          border: "1px solid #f59e0b",
+                          padding: "1px 4px",
+                          borderRadius: "4px",
+                        }}
+                      >
+                        Pending
+                      </span>
+                    )}
+                  </div>
                   <span
-                    className={`port ${port.type || "managed"}`}
+                    className={`port ${activePort.type || "managed"}`}
                     style={{ fontSize: "0.75rem" }}
                   >
-                    {port.type || "managed"}
+                    {activePort.type || "managed"}
                   </span>
                 </div>
 
@@ -726,7 +779,7 @@ export function Sidebar({
                     marginTop: "4px",
                   }}
                 >
-                  MAC: {port.mac}
+                  MAC: {activePort.mac}
                 </div>
 
                 {/* Netdev Type Selector (Managed, User, Bridge, TAP) */}
@@ -750,7 +803,7 @@ export function Sidebar({
                   >
                     Type:
                     <select
-                      value={port.type || "managed"}
+                      value={activePort.type || "managed"}
                       onChange={(e) => handlePortPropertyChange(port.id, "type", e.target.value)}
                       style={{
                         background: "var(--bg-dark)",
@@ -773,7 +826,7 @@ export function Sidebar({
                 </div>
 
                 {/* Extra UI Field: User Mode Port Forwarding */}
-                {(port.type === "user" || port.type === "slirp") && (
+                {(activePort.type === "user" || activePort.type === "slirp") && (
                   <div style={{ marginTop: "6px" }}>
                     <label
                       style={{
@@ -788,7 +841,7 @@ export function Sidebar({
                       <input
                         type="text"
                         placeholder="tcp::2222-:22"
-                        value={port.hostFwd || ""}
+                        value={activePort.hostFwd || ""}
                         onChange={(e) =>
                           handlePortPropertyChange(port.id, "hostFwd", e.target.value)
                         }
@@ -806,7 +859,11 @@ export function Sidebar({
                       />
                     </label>
                     <div
-                      style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}
+                      style={{
+                        fontSize: "0.7rem",
+                        color: "var(--text-muted)",
+                        marginTop: "2px",
+                      }}
                     >
                       Format: <code>tcp::2222-:22</code> or <code>udp::8080-:80</code>
                     </div>
@@ -814,7 +871,7 @@ export function Sidebar({
                 )}
 
                 {/* Extra UI Field: Bridge Interface Select */}
-                {port.type === "bridge" && (
+                {activePort.type === "bridge" && (
                   <div style={{ marginTop: "6px" }}>
                     <label
                       style={{
@@ -828,7 +885,7 @@ export function Sidebar({
                       <span>Bridge Interface:</span>
                       <div style={{ display: "flex", gap: "4px" }}>
                         <select
-                          value={port.bridgeIf || "br0"}
+                          value={activePort.bridgeIf || "br0"}
                           onChange={(e) =>
                             handlePortPropertyChange(port.id, "bridgeIf", e.target.value)
                           }
@@ -852,7 +909,7 @@ export function Sidebar({
                         <input
                           type="text"
                           placeholder="br0"
-                          value={port.bridgeIf || "br0"}
+                          value={activePort.bridgeIf || "br0"}
                           onChange={(e) =>
                             handlePortPropertyChange(port.id, "bridgeIf", e.target.value)
                           }
@@ -874,7 +931,7 @@ export function Sidebar({
                 )}
 
                 {/* Extra UI Field: TAP Interface Name (Optional) */}
-                {port.type === "tap" && (
+                {activePort.type === "tap" && (
                   <div style={{ marginTop: "6px" }}>
                     <label
                       style={{
@@ -889,7 +946,7 @@ export function Sidebar({
                       <input
                         type="text"
                         placeholder="tap0 (Auto-allocated if blank)"
-                        value={port.tapIf || ""}
+                        value={activePort.tapIf || ""}
                         onChange={(e) => handlePortPropertyChange(port.id, "tapIf", e.target.value)}
                         style={{
                           background: "var(--bg-dark)",
@@ -928,8 +985,10 @@ export function Sidebar({
                   >
                     Driver:
                     <select
-                      value={port.netdevDriver || "virtio-net-pci"}
-                      onChange={(e) => handlePortDriverChange(port.id, e.target.value)}
+                      value={activePort.netdevDriver || "virtio-net-pci"}
+                      onChange={(e) =>
+                        handlePortPropertyChange(port.id, "netdevDriver", e.target.value)
+                      }
                       style={{
                         background: "var(--bg-dark)",
                         border: "1px solid var(--border-color)",
@@ -970,7 +1029,7 @@ export function Sidebar({
                   )}
                 </div>
 
-                {/* Per-Port TZSP Frame Forwarding */}
+                {/* Per-Port Connect / Disconnect Toggle Button */}
                 <div
                   style={{
                     marginTop: "8px",
@@ -978,34 +1037,23 @@ export function Sidebar({
                     borderTop: "1px dashed var(--border-color)",
                   }}
                 >
-                  {isEditingTzsp ? (
-                    <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
-                      <input
-                        type="text"
-                        placeholder="127.0.0.1:37008"
-                        value={tzspInputMap[port.id] ?? wire?.tzspTarget ?? "127.0.0.1:37008"}
-                        onChange={(e) =>
-                          setTzspInputMap({ ...tzspInputMap, [port.id]: e.target.value })
-                        }
-                        style={{
-                          background: "var(--bg-dark)",
-                          border: "1px solid var(--accent-primary)",
-                          color: "var(--text-main)",
-                          borderRadius: "4px",
-                          padding: "4px 6px",
-                          fontSize: "0.75rem",
-                          width: "100%",
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        style={{ padding: "4px 8px", fontSize: "0.75rem" }}
-                        onClick={() => handleSaveTzspForPort(port.id, wire)}
-                      >
-                        Set
-                      </button>
-                    </div>
+                  {!isLinkOn || (isPoweredOn && hasPendingDraft) ? (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{
+                        padding: "4px 8px",
+                        fontSize: "0.75rem",
+                        width: "100%",
+                        justifyContent: "center",
+                        background: "#10b981",
+                        borderColor: "#10b981",
+                        color: "#ffffff",
+                      }}
+                      onClick={() => handleConnectPort(port.id)}
+                    >
+                      <Power size={12} /> Connect
+                    </button>
                   ) : (
                     <button
                       type="button"
@@ -1015,33 +1063,13 @@ export function Sidebar({
                         fontSize: "0.75rem",
                         width: "100%",
                         justifyContent: "center",
-                        background: wire?.tzspTarget ? "rgba(239, 68, 68, 0.15)" : "none",
-                        borderColor: wire?.tzspTarget ? "#ef4444" : "var(--border-color)",
-                        color: wire?.tzspTarget ? "#ef4444" : "var(--text-main)",
+                        background: "rgba(239, 68, 68, 0.15)",
+                        borderColor: "#ef4444",
+                        color: "#ef4444",
                       }}
-                      onClick={() => {
-                        if (!isConnected) {
-                          alert("Connect this port to a wire first to forward TZSP frames!");
-                          return;
-                        }
-                        if (wire?.tzspTarget) {
-                          // Deactivate TZSP directly on click when currently active!
-                          if (onUpdateWire && wire) {
-                            onUpdateWire({
-                              ...wire,
-                              tzspTarget: "",
-                            });
-                          }
-                          setActiveTzspPortId(null);
-                        } else {
-                          setActiveTzspPortId(port.id);
-                        }
-                      }}
+                      onClick={() => handleDisconnectPort(port.id)}
                     >
-                      <Radio size={12} />{" "}
-                      {wire?.tzspTarget
-                        ? `Stop TZSP (${wire.tzspTarget})`
-                        : "Forward Frames (TZSP)"}
+                      <Power size={12} /> Disconnect
                     </button>
                   )}
                 </div>
@@ -1071,97 +1099,115 @@ export function Sidebar({
                       <Activity size={12} style={{ color: "#3b82f6" }} /> Link Conditions (Latency &
                       Loss):
                     </div>
+
                     <div
                       style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}
                     >
-                      <div>
-                        <label style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-                          Delay (ms):
-                          <input
-                            type="number"
-                            min="0"
-                            max="5000"
-                            value={wire.conditions?.delayMs ?? 0}
-                            onChange={(e) => {
-                              const delayMs = Math.max(0, Number(e.target.value) || 0);
-                              onUpdateWire({
-                                ...wire,
-                                conditions: { ...(wire.conditions || {}), delayMs },
-                              });
-                            }}
-                            style={{
-                              width: "100%",
-                              background: "var(--bg-dark)",
-                              border: "1px solid var(--border-color)",
-                              color: "var(--text-main)",
-                              borderRadius: "4px",
-                              padding: "2px 4px",
-                              fontSize: "0.75rem",
-                              marginTop: "2px",
-                            }}
-                          />
-                        </label>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-                          Jitter (ms):
-                          <input
-                            type="number"
-                            min="0"
-                            max="1000"
-                            value={wire.conditions?.jitterMs ?? 0}
-                            onChange={(e) => {
-                              const jitterMs = Math.max(0, Number(e.target.value) || 0);
-                              onUpdateWire({
-                                ...wire,
-                                conditions: { ...(wire.conditions || {}), jitterMs },
-                              });
-                            }}
-                            style={{
-                              width: "100%",
-                              background: "var(--bg-dark)",
-                              border: "1px solid var(--border-color)",
-                              color: "var(--text-main)",
-                              borderRadius: "4px",
-                              padding: "2px 4px",
-                              fontSize: "0.75rem",
-                              marginTop: "2px",
-                            }}
-                          />
-                        </label>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-                          Loss (%):
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.5"
-                            value={wire.conditions?.lossPercent ?? 0}
-                            onChange={(e) => {
-                              const lossPercent = Math.max(
-                                0,
-                                Math.min(100, Number(e.target.value) || 0),
-                              );
-                              onUpdateWire({
-                                ...wire,
-                                conditions: { ...(wire.conditions || {}), lossPercent },
-                              });
-                            }}
-                            style={{
-                              width: "100%",
-                              background: "var(--bg-dark)",
-                              border: "1px solid var(--border-color)",
-                              color: "var(--text-main)",
-                              borderRadius: "4px",
-                              padding: "2px 4px",
-                              fontSize: "0.75rem",
-                              marginTop: "2px",
-                            }}
-                          />
-                        </label>
-                      </div>
+                      <label
+                        style={{
+                          fontSize: "0.7rem",
+                          color: "var(--text-muted)",
+                          display: "flex",
+                          flexDirection: "column",
+                        }}
+                      >
+                        Delay (ms):
+                        <input
+                          type="number"
+                          min="0"
+                          max="10000"
+                          value={wire.conditions?.delayMs ?? 0}
+                          onChange={(e) => {
+                            const delayMs = Math.max(0, Number(e.target.value) || 0);
+                            onUpdateWire({
+                              ...wire,
+                              conditions: { ...(wire.conditions || {}), delayMs },
+                            });
+                          }}
+                          style={{
+                            width: "100%",
+                            background: "var(--bg-dark)",
+                            border: "1px solid var(--border-color)",
+                            color: "var(--text-main)",
+                            borderRadius: "4px",
+                            padding: "2px 4px",
+                            fontSize: "0.75rem",
+                            marginTop: "2px",
+                          }}
+                        />
+                      </label>
+
+                      <label
+                        style={{
+                          fontSize: "0.7rem",
+                          color: "var(--text-muted)",
+                          display: "flex",
+                          flexDirection: "column",
+                        }}
+                      >
+                        Jitter (ms):
+                        <input
+                          type="number"
+                          min="0"
+                          max="10000"
+                          value={wire.conditions?.jitterMs ?? 0}
+                          onChange={(e) => {
+                            const jitterMs = Math.max(0, Number(e.target.value) || 0);
+                            onUpdateWire({
+                              ...wire,
+                              conditions: { ...(wire.conditions || {}), jitterMs },
+                            });
+                          }}
+                          style={{
+                            width: "100%",
+                            background: "var(--bg-dark)",
+                            border: "1px solid var(--border-color)",
+                            color: "var(--text-main)",
+                            borderRadius: "4px",
+                            padding: "2px 4px",
+                            fontSize: "0.75rem",
+                            marginTop: "2px",
+                          }}
+                        />
+                      </label>
+
+                      <label
+                        style={{
+                          fontSize: "0.7rem",
+                          color: "var(--text-muted)",
+                          display: "flex",
+                          flexDirection: "column",
+                        }}
+                      >
+                        Loss (%):
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                          value={wire.conditions?.lossPercent ?? 0}
+                          onChange={(e) => {
+                            const lossPercent = Math.max(
+                              0,
+                              Math.min(100, Number(e.target.value) || 0),
+                            );
+                            onUpdateWire({
+                              ...wire,
+                              conditions: { ...(wire.conditions || {}), lossPercent },
+                            });
+                          }}
+                          style={{
+                            width: "100%",
+                            background: "var(--bg-dark)",
+                            border: "1px solid var(--border-color)",
+                            color: "var(--text-main)",
+                            borderRadius: "4px",
+                            padding: "2px 4px",
+                            fontSize: "0.75rem",
+                            marginTop: "2px",
+                          }}
+                        />
+                      </label>
                     </div>
                   </div>
                 )}

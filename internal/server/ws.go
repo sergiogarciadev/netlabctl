@@ -677,10 +677,13 @@ func (h *WSHub) SyncTopologyNetworkAndMonitors(top *model.Topology) {
 					pType = "managed"
 				}
 
-				// Unmanaged/non-managed interfaces (user, bridge, tap, unmanaged) are ALWAYS set to link UP ('on').
+				// Unmanaged/non-managed interfaces (user, bridge, tap, unmanaged) are set to link UP ('on') by default.
 				// Managed interfaces are set to link UP ('on') if connected to a wire in the topology.
+				// If port.LinkState is explicitly "off", set linkOn = false.
 				linkOn := true
-				if pType == "managed" {
+				if port.LinkState == "off" {
+					linkOn = false
+				} else if pType == "managed" {
 					linkOn = connectedPorts[portKeyID] || (port.Name != "" && connectedPorts[portKeyName])
 				}
 

@@ -8,6 +8,7 @@ type NodePort struct {
 	Name         string `json:"name"`
 	MAC          string `json:"mac"`
 	Type         string `json:"type,omitempty"`         // "managed", "user", "bridge", "tap"
+	LinkState    string `json:"linkState,omitempty"`    // "on", "off"
 	NetdevDriver string `json:"netdevDriver,omitempty"` // QEMU device model e.g. "virtio-net-pci", "e1000"
 	DeviceOpts   string `json:"deviceOpts,omitempty"`   // Extra QEMU -device options e.g. "bus=bridge1"
 	HostFwd      string `json:"hostFwd,omitempty"`      // e.g. "tcp::2222-:22"
