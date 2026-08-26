@@ -1712,6 +1712,25 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
             fabricObj.className = className;
             fabricObj.class = className;
           }
+
+          // Restore SVG XML x & y attributes for text elements in Fabric v7
+          const tag = docElem.tagName ? docElem.tagName.toLowerCase() : "";
+          if (tag === "text" || fabricObj.type === "text" || fabricObj.type === "i-text") {
+            const attrX = docElem.getAttribute("x");
+            const attrY = docElem.getAttribute("y");
+            if (attrX && !attrX.includes("%")) {
+              const valX = Number.parseFloat(attrX);
+              if (!Number.isNaN(valX)) {
+                fabricObj.set({ left: valX });
+              }
+            }
+            if (attrY && !attrY.includes("%")) {
+              const valY = Number.parseFloat(attrY);
+              if (!Number.isNaN(valY)) {
+                fabricObj.set({ top: valY });
+              }
+            }
+          }
         }
       });
       if (parsed.objects && parsed.objects.length > 0) {
@@ -1753,8 +1772,8 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
       fontSize: 14,
       fontFamily: "sans-serif",
       id: "warning-image-missing",
+      isWarningBadge: true,
     });
-    warningBadge.isWarningBadge = true;
     svgObjects.push(warningBadge);
   }
 
@@ -1813,16 +1832,12 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     const elemId = getElemId(obj);
 
     const isNameElem =
-      (nameItem && elemId === nameItem.id) ||
-      elemId === "status-name" ||
-      elemId === "device-name" ||
-      elemId.includes("name");
+      (nameItem && elemId === nameItem.id) || elemId === "status-name" || elemId === "device-name";
 
     const isPowerElem =
       (powerItem && elemId === powerItem.id) ||
       elemId === "status-power" ||
-      elemId === "device-power" ||
-      elemId.includes("power");
+      elemId === "device-power";
 
     if (isNameElem && typeof obj.set === "function") {
       obj.set({ text: node.name });
