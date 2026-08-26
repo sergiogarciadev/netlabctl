@@ -1680,22 +1680,6 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         const pType = port.type || port.netdevType || "managed";
         const isManaged = pType === "managed";
 
-        const tagChildren = (targetObj) => {
-          targetObj.portId = port.id;
-          targetObj.portData = port;
-          targetObj.isManagedPort = isManaged;
-          targetObj.hoverCursor = !isManaged
-            ? "not-allowed"
-            : activeTool === "wire"
-              ? "crosshair"
-              : "pointer";
-          if (targetObj._objects && Array.isArray(targetObj._objects)) {
-            targetObj._objects.forEach(tagChildren);
-          }
-        };
-        tagChildren(obj);
-        portElementsMap.set(port.id, obj);
-
         const isConnected = wires.some(
           (w) =>
             (w.srcNodeId === node.id && w.srcPortId === port.id) ||
@@ -1717,10 +1701,25 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
           basePortColor = "#4d4d4d";
         }
 
-        if (typeof obj.set === "function") {
-          obj.set({ fill: basePortColor });
-        }
-        obj.basePortColor = basePortColor;
+        const tagChildren = (targetObj) => {
+          targetObj.portId = port.id;
+          targetObj.portData = port;
+          targetObj.isManagedPort = isManaged;
+          targetObj.basePortColor = basePortColor;
+          targetObj.hoverCursor = !isManaged
+            ? "not-allowed"
+            : activeTool === "wire"
+              ? "crosshair"
+              : "pointer";
+          if (typeof targetObj.set === "function") {
+            targetObj.set({ fill: basePortColor });
+          }
+          if (targetObj._objects && Array.isArray(targetObj._objects)) {
+            targetObj._objects.forEach(tagChildren);
+          }
+        };
+        tagChildren(obj);
+        portElementsMap.set(port.id, obj);
       }
     });
 
@@ -1774,52 +1773,60 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   nodePorts.forEach((port, idx) => {
     if (portElementsMap.has(port.id)) {
       const portObj = portElementsMap.get(port.id);
-      const center = portObj.getCenterPoint
-        ? portObj.getCenterPoint()
-        : { x: portObj.left || 0, y: portObj.top || 0 };
-      const relX = center.x + (nodeGroup.width || 120) / 2;
-      const relY = center.y + (nodeGroup.height || 50) / 2;
-      nodeGroup.portRelativePositions.set(port.id, { x: relX, y: relY });
+      const localX = portObj.left !== undefined ? portObj.left : 0;
+      const localY = portObj.top !== undefined ? portObj.top : 0;
+      nodeGroup.portRelativePositions.set(port.id, { x: localX, y: localY });
     } else {
       const count = nodePorts.length;
-      const step = (nodeGroup.width || 120) / (count + 1);
-      const relX = step * (idx + 1);
-      const relY = (nodeGroup.height || 50) - 8;
-      nodeGroup.portRelativePositions.set(port.id, { x: relX, y: relY });
+      const width = nodeGroup.width || 120;
+      const height = nodeGroup.height || 50;
+      const step = width / (count + 1);
+      const relXFromLeft = step * (idx + 1);
+      const relYFromTop = height - 8;
+      const localX = relXFromLeft - width / 2;
+      const localY = relYFromTop - height / 2;
+      nodeGroup.portRelativePositions.set(port.id, { x: localX, y: localY });
     }
   });
 
   nodeGroup.getPortAbsPosition = (portId) => {
+    const scaleX = nodeGroup.scaleX || 1;
+    const scaleY = nodeGroup.scaleY || 1;
+    const groupWidth =
+      typeof nodeGroup.getScaledWidth === "function"
+        ? nodeGroup.getScaledWidth()
+        : (nodeGroup.width || 120) * scaleX;
+    const groupHeight =
+      typeof nodeGroup.getScaledHeight === "function"
+        ? nodeGroup.getScaledHeight()
+        : (nodeGroup.height || 50) * scaleY;
+
+    const groupCenterX = nodeGroup.left + groupWidth / 2;
+    const groupCenterY = nodeGroup.top + groupHeight / 2;
+
     if (portElementsMap.has(portId)) {
       const portObj = portElementsMap.get(portId);
-      if (portObj && typeof portObj.calcTransformMatrix === "function") {
-        const matrix = portObj.calcTransformMatrix();
-        if (matrix && matrix.length >= 6) {
-          const absX = matrix[4];
-          const absY = matrix[5];
-          if (!Number.isNaN(absX) && !Number.isNaN(absY)) {
-            return { x: absX, y: absY };
-          }
-        }
+      if (portObj) {
+        const localX = portObj.left !== undefined ? portObj.left : 0;
+        const localY = portObj.top !== undefined ? portObj.top : 0;
+        return {
+          x: groupCenterX + localX * scaleX,
+          y: groupCenterY + localY * scaleY,
+        };
       }
     }
+
     const relPos = nodeGroup.portRelativePositions.get(portId);
     if (relPos) {
-      const scaleX = nodeGroup.scaleX || 1;
-      const scaleY = nodeGroup.scaleY || 1;
       return {
-        x: nodeGroup.left + relPos.x * scaleX,
-        y: nodeGroup.top + relPos.y * scaleY,
+        x: groupCenterX + relPos.x * scaleX,
+        y: groupCenterY + relPos.y * scaleY,
       };
     }
 
     return {
-      x:
-        nodeGroup.left +
-        (nodeGroup.getScaledWidth ? nodeGroup.getScaledWidth() : nodeGroup.width || 120) / 2,
-      y:
-        nodeGroup.top +
-        (nodeGroup.getScaledHeight ? nodeGroup.getScaledHeight() : nodeGroup.height || 50) / 2,
+      x: groupCenterX,
+      y: groupCenterY,
     };
   };
 
