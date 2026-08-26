@@ -213,6 +213,14 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 		args = append(args, "-drive", fmt.Sprintf("file=%s,format=raw,media=cdrom,readonly=on", isoPath))
 	}
 
+	// Append custom extra QEMU arguments from device template BEFORE port arguments (e.g. pci-bridge definitions)
+	if tmpl != nil {
+		qemuExtra := tmpl.GetQEMUArgs()
+		if len(qemuExtra) > 0 {
+			args = append(args, qemuExtra...)
+		}
+	}
+
 	// Add network devices for node ports (supporting managed, user, bridge, and tap netdev types)
 	for i, port := range node.Ports {
 		netdevID := fmt.Sprintf("net%d", i)
@@ -278,13 +286,6 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 					"-device", devArg,
 				)
 			}
-		}
-	}
-
-	if tmpl != nil {
-		qemuExtra := tmpl.GetQEMUArgs()
-		if len(qemuExtra) > 0 {
-			args = append(args, qemuExtra...)
 		}
 	}
 
