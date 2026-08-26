@@ -271,12 +271,6 @@ export function Toolbar({
         >
           <Settings size={16} /> Settings
         </button>
-
-        {selectedNode && (
-          <button type="button" className="btn" onClick={() => onOpenTerminal(selectedNode)}>
-            <TerminalIcon size={16} /> Serial Console ({selectedNode.name})
-          </button>
-        )}
       </div>
     </div>
   );

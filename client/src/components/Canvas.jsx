@@ -24,6 +24,7 @@ export function Canvas({
   activeTool,
   selectedNode = null,
   onSelectNode,
+  onOpenTerminal,
   onAddWire,
   onDeleteWire,
   onDeleteNode,
@@ -72,6 +73,10 @@ export function Canvas({
   useEffect(() => {
     onSelectNodeRef.current = onSelectNode;
   }, [onSelectNode]);
+  const onOpenTerminalRef = useRef(onOpenTerminal);
+  useEffect(() => {
+    onOpenTerminalRef.current = onOpenTerminal;
+  }, [onOpenTerminal]);
   useEffect(() => {
     onAddWireRef.current = onAddWire;
   }, [onAddWire]);
@@ -867,6 +872,15 @@ export function Canvas({
           onSelectNodeRef.current(target.nodeData);
         } else if (!target) {
           onSelectNodeRef.current(null);
+        }
+      }
+    });
+
+    canvas.on("mouse:dblclick", (opt) => {
+      const target = opt.target;
+      if (target?.isNodeGroup && target.nodeData) {
+        if (onOpenTerminalRef.current) {
+          onOpenTerminalRef.current(target.nodeData);
         }
       }
     });

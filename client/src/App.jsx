@@ -780,6 +780,7 @@ export function App() {
           activeTool={activeTool}
           selectedNode={selectedNode}
           onSelectNode={handleSelectNode}
+          onOpenTerminal={handleOpenTerminal}
           onAddWire={handleAddWire}
           onDeleteWire={handleDeleteWire}
           onDeleteNode={handleDeleteNode}
