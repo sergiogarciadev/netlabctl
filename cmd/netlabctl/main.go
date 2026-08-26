@@ -29,17 +29,21 @@ func main() {
 	srv := server.NewServer(*addrFlag, store)
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
 
+	errChan := make(chan error, 1)
 	go func() {
-		if err := srv.Start(); err != nil {
-			logger.Log.Error("Server stopped with error", "error", err)
-			os.Exit(1)
-		}
+		errChan <- srv.Start()
 	}()
 
-	sig := <-sigChan
-	logger.Log.Info("Received OS termination signal", "signal", sig.String())
+	select {
+	case sig := <-sigChan:
+		logger.Log.Info("Received OS termination signal", "signal", sig.String())
+	case err := <-errChan:
+		if err != nil {
+			logger.Log.Error("Server stopped unexpectedly", "error", err)
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -48,4 +52,5 @@ func main() {
 		logger.Log.Error("Server graceful shutdown failed", "error", err)
 		os.Exit(1)
 	}
+	logger.Log.Info("Netlabctl shutdown completed cleanly")
 }
