@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"netlabctl/devices"
 	"netlabctl/internal/logger"
 	"netlabctl/internal/model"
 )
@@ -72,93 +74,46 @@ func NewStorage(customDir string) (*Storage, error) {
 	return s, nil
 }
 
-// ensureDefaultTemplates seeds Mikrotik-4port and Mikrotik-8port templates if devices directory is empty.
+// ensureDefaultTemplates unpacks embedded device templates from devices.EmbeddedDevicesFS
+// into s.DevicesDir() if the devices directory is empty or missing.
 func (s *Storage) ensureDefaultTemplates() {
-	entries, err := os.ReadDir(s.DevicesDir())
+	devicesDir := s.DevicesDir()
+	entries, err := os.ReadDir(devicesDir)
 	if err == nil && len(entries) > 0 {
 		return
 	}
 
-	m4Dir := filepath.Join(s.DevicesDir(), "Mikrotik-4port")
-	if _, err := os.Stat(m4Dir); os.IsNotExist(err) {
-		_ = os.MkdirAll(m4Dir, 0755)
-		m4Json := `{
-  "id": "Mikrotik-4port",
-  "name": "Mikrotik Router (4-Port)",
-  "description": "Mikrotik RouterOS 4-port VM",
-  "drawing": "drawing.svg",
-  "system": "qemu-system-x86_64",
-  "memory": 256,
-  "smp": 1,
-  "ports": [
-    { "id": "device-port-1", "name": "ether1", "type": "managed" },
-    { "id": "device-port-2", "name": "ether2", "type": "managed" },
-    { "id": "device-port-3", "name": "ether3", "type": "managed" },
-    { "id": "device-port-4", "name": "ether4", "type": "managed" }
-  ],
-  "status": [
-    { "id": "status-power", "type": "power" },
-    { "id": "status-name", "type": "name" }
-  ]
-}`
-		m4Svg := `<svg width="120" height="50" viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
-  <rect width="120" height="50" rx="4" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
-  <text id="device-name" x="10" y="16" font-family="sans-serif" font-size="11" font-weight="bold" fill="#000000">MikroTik</text>
-  <text id="status-name" x="10" y="27" font-family="sans-serif" font-size="7" fill="#333333">Mikrotik-4port</text>
-  <circle id="status-power" cx="110" cy="11" r="4" fill="#ff0000"/>
-  <g id="device-port-1" transform="translate(13, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-  <g id="device-port-2" transform="translate(38, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-  <g id="device-port-3" transform="translate(63, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-  <g id="device-port-4" transform="translate(88, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-</svg>`
-		_ = os.WriteFile(filepath.Join(m4Dir, "machine.json"), []byte(m4Json), 0644)
-		_ = os.WriteFile(filepath.Join(m4Dir, "drawing.svg"), []byte(m4Svg), 0644)
-		logger.Log.Info("Seeded default template Mikrotik-4port")
-	}
+	err = fs.WalkDir(devices.EmbeddedDevicesFS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == "." || strings.HasSuffix(path, ".go") {
+			return nil
+		}
 
-	m8Dir := filepath.Join(s.DevicesDir(), "Mikrotik-8port")
-	if _, err := os.Stat(m8Dir); os.IsNotExist(err) {
-		_ = os.MkdirAll(m8Dir, 0755)
-		m8Json := `{
-  "id": "Mikrotik-8port",
-  "name": "Mikrotik Router (8-Port)",
-  "description": "Mikrotik RouterOS 8-port VM",
-  "drawing": "drawing.svg",
-  "system": "qemu-system-x86_64",
-  "memory": 256,
-  "smp": 1,
-  "ports": [
-    { "id": "device-port-1", "name": "ether1", "type": "managed" },
-    { "id": "device-port-2", "name": "ether2", "type": "managed" },
-    { "id": "device-port-3", "name": "ether3", "type": "managed" },
-    { "id": "device-port-4", "name": "ether4", "type": "managed" },
-    { "id": "device-port-5", "name": "ether5", "type": "managed" },
-    { "id": "device-port-6", "name": "ether6", "type": "managed" },
-    { "id": "device-port-7", "name": "ether7", "type": "managed" },
-    { "id": "device-port-8", "name": "ether8", "type": "managed" }
-  ],
-  "status": [
-    { "id": "status-power", "type": "power" },
-    { "id": "status-name", "type": "name" }
-  ]
-}`
-		m8Svg := `<svg width="215" height="50" viewBox="0 0 215 50" xmlns="http://www.w3.org/2000/svg">
-  <rect width="215" height="50" rx="4" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
-  <text id="device-name" x="10" y="16" font-family="sans-serif" font-size="11" font-weight="bold" fill="#000000">MikroTik</text>
-  <text id="status-name" x="10" y="27" font-family="sans-serif" font-size="7" fill="#333333">Mikrotik-8port</text>
-  <circle id="status-power" cx="205" cy="11" r="4" fill="#ff0000"/>
-  <g id="device-port-1" transform="translate(13, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-  <g id="device-port-2" transform="translate(38, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-  <g id="device-port-3" transform="translate(63, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-  <g id="device-port-4" transform="translate(88, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-  <g id="device-port-5" transform="translate(113, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-  <g id="device-port-6" transform="translate(138, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-  <g id="device-port-7" transform="translate(163, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-  <g id="device-port-8" transform="translate(188, 30)"><rect width="18" height="15" fill="#4d4d4d" stroke="#cccccc" stroke-width="1"/></g>
-</svg>`
-		_ = os.WriteFile(filepath.Join(m8Dir, "machine.json"), []byte(m8Json), 0644)
-		_ = os.WriteFile(filepath.Join(m8Dir, "drawing.svg"), []byte(m8Svg), 0644)
-		logger.Log.Info("Seeded default template Mikrotik-8port")
+		targetPath := filepath.Join(devicesDir, path)
+
+		if d.IsDir() {
+			return os.MkdirAll(targetPath, 0755)
+		}
+
+		data, err := devices.EmbeddedDevicesFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+			if err := os.WriteFile(targetPath, data, 0644); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		logger.Log.Error("Failed to unpack embedded device templates", "error", err)
+	} else {
+		logger.Log.Info("Unpacked embedded device templates to devices directory", "dir", devicesDir)
 	}
 }
 

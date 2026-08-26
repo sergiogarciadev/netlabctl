@@ -253,3 +253,37 @@ func TestStorageImageManagement(t *testing.T) {
 		t.Fatalf("ListImages returned unexpected result: %+v", images)
 	}
 }
+
+func TestEmbeddedDeviceTemplatesUnpacking(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "netlabctl_embedded_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	s, err := NewStorage(tempDir)
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
+
+	templates, err := s.ListTemplates()
+	if err != nil {
+		t.Fatalf("ListTemplates failed: %v", err)
+	}
+
+	if len(templates) == 0 {
+		t.Fatalf("Expected embedded templates to be unpacked into empty storage, got 0")
+	}
+
+	found := false
+	for _, tmpl := range templates {
+		if tmpl.ID == "mikrotik-4ports" || tmpl.ID == "Mikrotik-4port" || tmpl.ID == "debian-13-1port" {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("Did not find expected embedded templates in list: %+v", templates)
+	}
+}
