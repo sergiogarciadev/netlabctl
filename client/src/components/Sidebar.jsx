@@ -43,6 +43,8 @@ export function Sidebar({
   const [metadata, setMetadata] = useState("");
   const [activeTab, setActiveTab] = useState("hardware"); // "hardware" | "scripts" | "ports"
   const [draftPortsMap, setDraftPortsMap] = useState({});
+  const [activeTzspPortId, setActiveTzspPortId] = useState(null);
+  const [tzspInputMap, setTzspInputMap] = useState({});
 
   useEffect(() => {
     if (selectedNode) {
@@ -178,6 +180,17 @@ export function Sidebar({
       ...selectedNode,
       ports: updatedPorts,
     });
+  };
+
+  const handleSaveTzspForPort = (portId, wire) => {
+    const targetAddr = tzspInputMap[portId] || "127.0.0.1:37008";
+    if (wire && onUpdateWire) {
+      onUpdateWire({
+        ...wire,
+        tzspTarget: targetAddr,
+      });
+    }
+    setActiveTzspPortId(null);
   };
 
   return (
@@ -725,6 +738,8 @@ export function Sidebar({
             const activePort = draftPortsMap[port.id] || port;
             const hasPendingDraft = !!draftPortsMap[port.id];
             const isLinkOn = activePort.linkState !== "off";
+            const isManaged = (activePort.type || "managed") === "managed";
+            const isEditingTzsp = activeTzspPortId === port.id;
 
             return (
               <div
@@ -1019,59 +1034,146 @@ export function Sidebar({
                   }}
                 >
                   <span style={{ color: "var(--text-muted)" }}>Status:</span>
-                  {isConnected ? (
-                    <span style={{ color: "#10b981", fontWeight: 600 }}>
-                      Connected → {remoteNode ? remoteNode.name : "Remote"} ({remotePortName})
-                    </span>
+                  {isManaged ? (
+                    isConnected ? (
+                      <span style={{ color: "#10b981", fontWeight: 600 }}>
+                        Connected → {remoteNode ? remoteNode.name : "Remote"} ({remotePortName})
+                      </span>
+                    ) : (
+                      <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Disconnected</span>
+                    )
+                  ) : isLinkOn ? (
+                    <span style={{ color: "#10b981", fontWeight: 600 }}>Connected (Link UP)</span>
                   ) : (
-                    <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Disconnected</span>
+                    <span style={{ color: "#ef4444", fontStyle: "italic" }}>
+                      Disconnected (Link DOWN)
+                    </span>
                   )}
                 </div>
 
-                {/* Per-Port Connect / Disconnect Toggle Button */}
-                <div
-                  style={{
-                    marginTop: "8px",
-                    paddingTop: "6px",
-                    borderTop: "1px dashed var(--border-color)",
-                  }}
-                >
-                  {!isLinkOn || (isPoweredOn && hasPendingDraft) ? (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      style={{
-                        padding: "4px 8px",
-                        fontSize: "0.75rem",
-                        width: "100%",
-                        justifyContent: "center",
-                        background: "#10b981",
-                        borderColor: "#10b981",
-                        color: "#ffffff",
-                      }}
-                      onClick={() => handleConnectPort(port.id)}
-                    >
-                      <Power size={12} /> Connect
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn"
-                      style={{
-                        padding: "4px 8px",
-                        fontSize: "0.75rem",
-                        width: "100%",
-                        justifyContent: "center",
-                        background: "rgba(239, 68, 68, 0.15)",
-                        borderColor: "#ef4444",
-                        color: "#ef4444",
-                      }}
-                      onClick={() => handleDisconnectPort(port.id)}
-                    >
-                      <Power size={12} /> Disconnect
-                    </button>
-                  )}
-                </div>
+                {/* Managed Ports: Forward Frames (TZSP) Button */}
+                {isManaged && (
+                  <div
+                    style={{
+                      marginTop: "8px",
+                      paddingTop: "6px",
+                      borderTop: "1px dashed var(--border-color)",
+                    }}
+                  >
+                    {isEditingTzsp ? (
+                      <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                        <input
+                          type="text"
+                          placeholder="127.0.0.1:37008"
+                          value={tzspInputMap[port.id] ?? wire?.tzspTarget ?? "127.0.0.1:37008"}
+                          onChange={(e) =>
+                            setTzspInputMap({ ...tzspInputMap, [port.id]: e.target.value })
+                          }
+                          style={{
+                            background: "var(--bg-dark)",
+                            border: "1px solid var(--accent-primary)",
+                            color: "var(--text-main)",
+                            borderRadius: "4px",
+                            padding: "4px 6px",
+                            fontSize: "0.75rem",
+                            width: "100%",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+                          onClick={() => handleSaveTzspForPort(port.id, wire)}
+                        >
+                          Set
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{
+                          padding: "4px 8px",
+                          fontSize: "0.75rem",
+                          width: "100%",
+                          justifyContent: "center",
+                          background: wire?.tzspTarget ? "rgba(239, 68, 68, 0.15)" : "none",
+                          borderColor: wire?.tzspTarget ? "#ef4444" : "var(--border-color)",
+                          color: wire?.tzspTarget ? "#ef4444" : "var(--text-main)",
+                        }}
+                        onClick={() => {
+                          if (!isConnected) {
+                            alert("Connect this port to a wire first to forward TZSP frames!");
+                            return;
+                          }
+                          if (wire?.tzspTarget) {
+                            if (onUpdateWire && wire) {
+                              onUpdateWire({
+                                ...wire,
+                                tzspTarget: "",
+                              });
+                            }
+                            setActiveTzspPortId(null);
+                          } else {
+                            setActiveTzspPortId(port.id);
+                          }
+                        }}
+                      >
+                        <Radio size={12} />{" "}
+                        {wire?.tzspTarget
+                          ? `Stop TZSP (${wire.tzspTarget})`
+                          : "Forward Frames (TZSP)"}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Non-Managed Ports (user, bridge, tap): Connect / Disconnect Button */}
+                {!isManaged && (
+                  <div
+                    style={{
+                      marginTop: "8px",
+                      paddingTop: "6px",
+                      borderTop: "1px dashed var(--border-color)",
+                    }}
+                  >
+                    {!isLinkOn || (isPoweredOn && hasPendingDraft) ? (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{
+                          padding: "4px 8px",
+                          fontSize: "0.75rem",
+                          width: "100%",
+                          justifyContent: "center",
+                          background: "#10b981",
+                          borderColor: "#10b981",
+                          color: "#ffffff",
+                        }}
+                        onClick={() => handleConnectPort(port.id)}
+                      >
+                        <Power size={12} /> Connect
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{
+                          padding: "4px 8px",
+                          fontSize: "0.75rem",
+                          width: "100%",
+                          justifyContent: "center",
+                          background: "rgba(239, 68, 68, 0.15)",
+                          borderColor: "#ef4444",
+                          color: "#ef4444",
+                        }}
+                        onClick={() => handleDisconnectPort(port.id)}
+                      >
+                        <Power size={12} /> Disconnect
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Per-Wire Network Conditions (Delay, Jitter, Loss) */}
                 {isConnected && wire && (
