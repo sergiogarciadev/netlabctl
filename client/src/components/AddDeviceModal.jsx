@@ -99,6 +99,20 @@ export function AddDeviceModal({ templates, isOpen, onClose, onSelectTemplate })
                     <HardDrive size={14} /> {tmpl.memory} MB RAM
                   </span>
                   <span>{tmpl.ports?.length || 0} Ports</span>
+                  {(!tmpl.image || tmpl.imageExists === false) && (
+                    <span
+                      style={{
+                        color: "#f87171",
+                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                      title="Disk image file is missing from ~/.netlabctl/images/"
+                    >
+                      ⚠️ Image missing
+                    </span>
+                  )}
                 </div>
               </div>
               <button

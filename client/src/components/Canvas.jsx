@@ -1566,6 +1566,19 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     subTargetCheck: true,
   });
 
+  if (isImageMissing) {
+    const wObj = (nodeGroup._objects || []).find((o) => o.isWarningBadge);
+    if (wObj) {
+      const gWidth = nodeGroup.width || 120;
+      const gHeight = nodeGroup.height || 50;
+      wObj.set({
+        left: -gWidth / 2 + 4,
+        top: -gHeight / 2 + 4,
+      });
+      nodeGroup.bringObjectToFront(wObj);
+    }
+  }
+
   nodeGroup.isNodeGroup = true;
   nodeGroup.nodeData = node;
   nodeGroup.getPortElement = (portId) => {

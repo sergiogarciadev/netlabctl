@@ -73,24 +73,41 @@ func (m *Manager) PrepareNodeDisk(projectID string, node *model.Node, tmplDir st
 
 	diskPath := filepath.Join(nDir, "disk.qcow2")
 
-	// If disk already exists, reuse it
-	if _, err := os.Stat(diskPath); err == nil {
-		return diskPath, nil
-	}
-
 	backingFile := ""
-	if tmpl != nil && tmpl.Image != "" {
+	if tmpl != nil && strings.TrimSpace(tmpl.Image) != "" {
+		imgName := strings.TrimSpace(tmpl.Image)
 		// 1. Check dedicated images directory (~/.netlabctl/images/<imageName>)
-		globalImage := filepath.Join(m.baseDir, "images", tmpl.Image)
+		globalImage := filepath.Join(m.baseDir, "images", imgName)
 		if info, err := os.Stat(globalImage); err == nil && !info.IsDir() && info.Size() > 0 {
 			backingFile = globalImage
 		} else {
 			// 2. Fallback to template device directory (~/.netlabctl/devices/<tmpl>/<imageName>)
-			localImage := filepath.Join(tmplDir, tmpl.Image)
+			localImage := filepath.Join(tmplDir, imgName)
 			if info, err := os.Stat(localImage); err == nil && !info.IsDir() && info.Size() > 0 {
 				backingFile = localImage
 			}
 		}
+	}
+
+	if backingFile == "" {
+		imgName := "unspecified"
+		tmplID := "unknown"
+		if tmpl != nil {
+			if tmpl.Image != "" {
+				imgName = tmpl.Image
+			}
+			if tmpl.ID != "" {
+				tmplID = tmpl.ID
+			}
+		}
+		// If disk overlay exists from a previous run without backing image, delete it
+		_ = os.Remove(diskPath)
+		return "", fmt.Errorf("cannot boot machine %s: template %q disk image %q is missing from ~/.netlabctl/images/", node.ID, tmplID, imgName)
+	}
+
+	// If disk overlay already exists and backing image is valid, reuse it
+	if _, err := os.Stat(diskPath); err == nil {
+		return diskPath, nil
 	}
 
 	qemuImg, err := exec.LookPath("qemu-img")
@@ -102,28 +119,13 @@ func (m *Manager) PrepareNodeDisk(projectID string, node *model.Node, tmplDir st
 		return diskPath, nil
 	}
 
-	var args []string
-	if backingFile != "" {
-		if _, err := os.Stat(backingFile); err == nil {
-			args = []string{"create", "-f", "qcow2", "-b", backingFile, "-F", "qcow2", diskPath}
-		} else {
-			logger.Log.Warn("Template backing image file not found, creating 2G blank qcow2 disk", "backingFile", backingFile)
-			args = []string{"create", "-f", "qcow2", diskPath, "2G"}
-		}
-	} else {
-		args = []string{"create", "-f", "qcow2", diskPath, "2G"}
-	}
-
+	args := []string{"create", "-f", "qcow2", "-b", backingFile, "-F", "qcow2", diskPath}
 	cmd := exec.Command(qemuImg, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		logger.Log.Warn("Failed to create qcow2 disk with backing image, falling back to standalone 2G disk", "output", string(out))
-		fallbackCmd := exec.Command(qemuImg, "create", "-f", "qcow2", diskPath, "2G")
-		if fbOut, fbErr := fallbackCmd.CombinedOutput(); fbErr != nil {
-			return "", fmt.Errorf("qemu-img fallback failed: %w (out: %s)", fbErr, string(fbOut))
-		}
+		return "", fmt.Errorf("failed to create qcow2 disk overlay with backing image %s: %w (out: %s)", backingFile, err, string(out))
 	}
 
-	logger.Log.Info("Created qcow2 disk for node", "nodeID", node.ID, "diskPath", diskPath)
+	logger.Log.Info("Created qcow2 disk overlay for node", "nodeID", node.ID, "diskPath", diskPath, "backingFile", backingFile)
 	return diskPath, nil
 }
 
