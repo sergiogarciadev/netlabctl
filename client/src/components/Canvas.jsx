@@ -1850,16 +1850,12 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     const portIndex = idx >= 0 ? idx : 0;
     const count = nodePorts.length || 1;
 
-    let fracX = 0.5;
+    // Universal front-panel port spacing formula across all N-port SVG device drawings:
+    // Port 0 center X = 75px, Port N-1 center X = 75 + (N-1)*50px, Total SVG Width = 100 + N*50px.
+    const svgTotalWidth = 100 + count * 50;
+    const portCenterXInSvg = 75 + portIndex * 50;
+    const fracX = Math.max(0.01, Math.min(0.99, portCenterXInSvg / svgTotalWidth));
     const fracY = 0.76;
-
-    if (count === 1) {
-      fracX = 0.5;
-    } else {
-      const startFracX = 0.25;
-      const endFracX = 0.75;
-      fracX = startFracX + portIndex * ((endFracX - startFracX) / (count - 1));
-    }
 
     return {
       x: topLeftX + groupWidth * fracX,
