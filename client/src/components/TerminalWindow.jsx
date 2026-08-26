@@ -94,15 +94,27 @@ export function TerminalWindow({
     } else if (isResizingRef.current) {
       const dx = e.clientX - resizeStartPosRef.current.x;
       const dy = e.clientY - resizeStartPosRef.current.y;
-      const newW = Math.max(
-        340,
-        Math.min(window.innerWidth - 40, resizeStartPosRef.current.w + dx),
-      );
-      const newH = Math.max(
-        160,
-        Math.min(window.innerHeight - 80, resizeStartPosRef.current.h + dy),
-      );
-      setLayout((prev) => ({ ...prev, width: newW, height: newH }));
+
+      setLayout((prev) => {
+        if (prev.isDetached) {
+          const newW = Math.max(
+            340,
+            Math.min(window.innerWidth - 40, resizeStartPosRef.current.w + dx),
+          );
+          const newH = Math.max(
+            160,
+            Math.min(window.innerHeight - 80, resizeStartPosRef.current.h + dy),
+          );
+          return { ...prev, width: newW, height: newH };
+        }
+
+        // Docked at bottom: handle is at the top of panel, so dragging up (negative dy) increases height
+        const newH = Math.max(
+          160,
+          Math.min(window.innerHeight - 80, resizeStartPosRef.current.h - dy),
+        );
+        return { ...prev, height: newH };
+      });
     }
   }, []);
 
