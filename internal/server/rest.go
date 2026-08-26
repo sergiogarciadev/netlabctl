@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,6 +23,63 @@ func (s *Server) handleListTemplates(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(templates)
+}
+
+func (s *Server) handleListImages(w http.ResponseWriter, r *http.Request) {
+	images, err := s.storage.ListImages()
+	if err != nil {
+		http.Error(w, "Failed to list images", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(images)
+}
+
+func (s *Server) handleUploadImage(w http.ResponseWriter, r *http.Request) {
+	// Limit total body size to 2.5 GB (2500 MB) for disk images
+	const maxUploadSize = 2500 * 1024 * 1024
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		// Store up to 32MB in RAM; larger uploads spillover to disk
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			logger.Log.Error("Failed to parse multipart form for image upload", "error", err)
+			http.Error(w, "Failed to parse multipart upload form (max 2.5GB limit)", http.StatusBadRequest)
+			return
+		}
+
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "Missing file field in form data", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		filename := filepath.Base(header.Filename)
+		if filename == "" || filename == "." || filename == "/" {
+			http.Error(w, "Invalid filename", http.StatusBadRequest)
+			return
+		}
+
+		if err := s.storage.SaveImage(filename, file); err != nil {
+			logger.Log.Error("Failed to save disk image", "filename", filename, "error", err)
+			http.Error(w, fmt.Sprintf("Failed to save image: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		logger.Log.Info("Disk image uploaded successfully", "filename", filename, "size", header.Size)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message":  "Disk image uploaded successfully",
+			"filename": filename,
+			"size":     header.Size,
+		})
+		return
+	}
+
+	http.Error(w, "Content-Type must be multipart/form-data", http.StatusBadRequest)
 }
 
 func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request) {

@@ -42,6 +42,7 @@ type MachineTemplate struct {
 	Cores       int              `json:"cores,omitempty"`
 	CPU         string           `json:"cpu,omitempty"`
 	Image       string           `json:"image,omitempty"`
+	ImageExists bool             `json:"imageExists"`
 	Userdata    string           `json:"userdata,omitempty"`
 	Metadata    string           `json:"metadata,omitempty"`
 	Ports       []PortTemplate   `json:"ports"`

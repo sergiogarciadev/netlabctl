@@ -211,3 +211,45 @@ func TestPathTraversalProtection(t *testing.T) {
 		}
 	}
 }
+
+func TestStorageImageManagement(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "netlabctl_images_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	s, err := NewStorage(tempDir)
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
+
+	tmplNoImage := &model.MachineTemplate{ID: "t1", Name: "No Image"}
+	if s.CheckImageExists(tmplNoImage) {
+		t.Errorf("CheckImageExists returned true for template with no image specified")
+	}
+
+	tmplWithMissing := &model.MachineTemplate{ID: "t2", Name: "Missing Image", Image: "missing.qcow2"}
+	if s.CheckImageExists(tmplWithMissing) {
+		t.Errorf("CheckImageExists returned true for non-existent image file")
+	}
+
+	// Save an image to ~/.netlabctl/images
+	imgData := []byte("FAKE_QCOW2_DATA_CONTENT")
+	if err := s.SaveImage("chr-7.21.5.qcow2", bytes.NewReader(imgData)); err != nil {
+		t.Fatalf("SaveImage failed: %v", err)
+	}
+
+	tmplWithImage := &model.MachineTemplate{ID: "t3", Name: "Valid Image", Image: "chr-7.21.5.qcow2"}
+	if !s.CheckImageExists(tmplWithImage) {
+		t.Errorf("CheckImageExists returned false for existing image in images dir")
+	}
+
+	images, err := s.ListImages()
+	if err != nil {
+		t.Fatalf("ListImages failed: %v", err)
+	}
+	if len(images) != 1 || images[0].Filename != "chr-7.21.5.qcow2" {
+		t.Fatalf("ListImages returned unexpected result: %+v", images)
+	}
+}

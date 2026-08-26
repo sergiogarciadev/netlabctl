@@ -80,7 +80,17 @@ func (m *Manager) PrepareNodeDisk(projectID string, node *model.Node, tmplDir st
 
 	backingFile := ""
 	if tmpl != nil && tmpl.Image != "" {
-		backingFile = filepath.Join(tmplDir, tmpl.Image)
+		// 1. Check dedicated images directory (~/.netlabctl/images/<imageName>)
+		globalImage := filepath.Join(m.baseDir, "images", tmpl.Image)
+		if info, err := os.Stat(globalImage); err == nil && !info.IsDir() && info.Size() > 0 {
+			backingFile = globalImage
+		} else {
+			// 2. Fallback to template device directory (~/.netlabctl/devices/<tmpl>/<imageName>)
+			localImage := filepath.Join(tmplDir, tmpl.Image)
+			if info, err := os.Stat(localImage); err == nil && !info.IsDir() && info.Size() > 0 {
+				backingFile = localImage
+			}
+		}
 	}
 
 	qemuImg, err := exec.LookPath("qemu-img")

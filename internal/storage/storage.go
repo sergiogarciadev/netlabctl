@@ -50,9 +50,13 @@ func NewStorage(customDir string) (*Storage, error) {
 		dir = filepath.Join(home, ".netlabctl")
 	}
 
+	imagesDir := filepath.Join(dir, "images")
 	devicesDir := filepath.Join(dir, "devices")
 	projectsDir := filepath.Join(dir, "projects")
 
+	if err := os.MkdirAll(imagesDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create images dir: %w", err)
+	}
 	if err := os.MkdirAll(devicesDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create devices dir: %w", err)
 	}
@@ -208,6 +212,130 @@ func (s *Storage) ProjectDir(projectID string) (string, error) {
 }
 
 // ListTemplates scans the devices directory and loads machine.json or template.json files.
+// ImagesDir returns the dedicated disk images path ($HOME/.netlabctl/images).
+func (s *Storage) ImagesDir() string {
+	return filepath.Join(s.baseDir, "images")
+}
+
+// CheckImageExists checks if the image specified in the template exists in ~/.netlabctl/images or device template folders.
+func (s *Storage) CheckImageExists(tmpl *model.MachineTemplate) bool {
+	if tmpl == nil || strings.TrimSpace(tmpl.Image) == "" {
+		return false
+	}
+	imageName := strings.TrimSpace(tmpl.Image)
+
+	// 1. Check dedicated images directory (~/.netlabctl/images/<imageName>)
+	imgPath := filepath.Join(s.ImagesDir(), imageName)
+	if info, err := os.Stat(imgPath); err == nil && !info.IsDir() && info.Size() > 0 {
+		return true
+	}
+
+	// 2. Check template device directory (~/.netlabctl/devices/<tmpl.ID>/<imageName>)
+	if tmpl.ID != "" {
+		deviceImgPath := filepath.Join(s.DevicesDir(), tmpl.ID, imageName)
+		if info, err := os.Stat(deviceImgPath); err == nil && !info.IsDir() && info.Size() > 0 {
+			return true
+		}
+	}
+
+	// 3. Search across all device directories
+	entries, err := os.ReadDir(s.DevicesDir())
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				p := filepath.Join(s.DevicesDir(), entry.Name(), imageName)
+				if info, err := os.Stat(p); err == nil && !info.IsDir() && info.Size() > 0 {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// ImageFileInfo holds details of a stored disk image.
+type ImageFileInfo struct {
+	Filename  string `json:"filename"`
+	SizeBytes int64  `json:"sizeBytes"`
+	Location  string `json:"location"`
+}
+
+// SaveImage writes a disk image file into s.ImagesDir() ($HOME/.netlabctl/images).
+func (s *Storage) SaveImage(filename string, r io.Reader) error {
+	cleanName := filepath.Base(filename)
+	if cleanName == "" || cleanName == "." || cleanName == ".." || cleanName == "/" {
+		return fmt.Errorf("invalid filename: %q", filename)
+	}
+	dstPath := filepath.Join(s.ImagesDir(), cleanName)
+	out, err := os.Create(dstPath)
+	if err != nil {
+		return fmt.Errorf("failed to create image file: %w", err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, r); err != nil {
+		_ = os.Remove(dstPath)
+		return fmt.Errorf("failed to write image content: %w", err)
+	}
+	return nil
+}
+
+// ListImages returns disk images found in ~/.netlabctl/images and device directories.
+func (s *Storage) ListImages() ([]ImageFileInfo, error) {
+	seen := make(map[string]bool)
+	var list []ImageFileInfo
+
+	entries, err := os.ReadDir(s.ImagesDir())
+	if err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				info, err := entry.Info()
+				if err == nil {
+					seen[entry.Name()] = true
+					list = append(list, ImageFileInfo{
+						Filename:  entry.Name(),
+						SizeBytes: info.Size(),
+						Location:  "images",
+					})
+				}
+			}
+		}
+	}
+
+	devEntries, devErr := os.ReadDir(s.DevicesDir())
+	if devErr == nil {
+		for _, d := range devEntries {
+			if d.IsDir() {
+				dPath := filepath.Join(s.DevicesDir(), d.Name())
+				files, fErr := os.ReadDir(dPath)
+				if fErr == nil {
+					for _, f := range files {
+						if !f.IsDir() {
+							ext := strings.ToLower(filepath.Ext(f.Name()))
+							if ext == ".qcow2" || ext == ".img" || ext == ".iso" || ext == ".vmdk" || ext == ".raw" {
+								if !seen[f.Name()] {
+									seen[f.Name()] = true
+									info, iErr := f.Info()
+									if iErr == nil {
+										list = append(list, ImageFileInfo{
+											Filename:  f.Name(),
+											SizeBytes: info.Size(),
+											Location:  fmt.Sprintf("devices/%s", d.Name()),
+										})
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return list, nil
+}
+
 func (s *Storage) ListTemplates() ([]model.MachineTemplate, error) {
 	devicesDir := s.DevicesDir()
 	entries, err := os.ReadDir(devicesDir)
@@ -223,6 +351,7 @@ func (s *Storage) ListTemplates() ([]model.MachineTemplate, error) {
 		dirPath := filepath.Join(devicesDir, entry.Name())
 		tmpl, err := loadTemplateFromDir(entry.Name(), dirPath)
 		if err == nil && tmpl != nil {
+			tmpl.ImageExists = s.CheckImageExists(tmpl)
 			templates = append(templates, *tmpl)
 		}
 	}
@@ -255,6 +384,10 @@ func (s *Storage) GetTemplate(id string) (*model.MachineTemplate, string, error)
 	tmpl, err := loadTemplateFromDir(id, tmplDir)
 	if err != nil {
 		return nil, "", fmt.Errorf("template %s not found: %w", id, err)
+	}
+
+	if tmpl != nil {
+		tmpl.ImageExists = s.CheckImageExists(tmpl)
 	}
 
 	return tmpl, tmplDir, nil

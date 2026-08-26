@@ -53,6 +53,8 @@ func (s *Server) routes() {
 	// REST API Endpoints
 	s.mux.HandleFunc("GET /api/templates", s.handleListTemplates)
 	s.mux.HandleFunc("POST /api/templates/import", s.handleImportTemplate)
+	s.mux.HandleFunc("GET /api/images", s.handleListImages)
+	s.mux.HandleFunc("POST /api/images/upload", s.handleUploadImage)
 	s.mux.HandleFunc("GET /api/templates/{id}/drawing", s.handleGetTemplateDrawing)
 	s.mux.HandleFunc("GET /api/projects", s.handleListProjects)
 	s.mux.HandleFunc("POST /api/projects", s.handleCreateProject)

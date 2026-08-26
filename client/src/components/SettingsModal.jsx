@@ -3,21 +3,52 @@ import {
   Bug,
   CheckCircle2,
   FileArchive,
+  HardDrive,
   Loader2,
   Settings,
   UploadCloud,
   X,
 } from "lucide-react";
 import { useRef, useState } from "react";
-import { importTemplateZip } from "../services/api";
+import { importTemplateZip, uploadDiskImage } from "../services/api";
 
 export function SettingsModal({ isOpen, onClose, config, onUpdateConfig, onImportSuccess }) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null);
+
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageUploadStatus, setImageUploadStatus] = useState(null);
+
   const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
 
   if (!isOpen) return null;
+
+  const handleImageUpload = async (file) => {
+    if (!file) return;
+    setIsUploadingImage(true);
+    setImageUploadStatus(null);
+
+    try {
+      const res = await uploadDiskImage(file);
+      setIsUploadingImage(false);
+      setImageUploadStatus({
+        type: "success",
+        message: `Disk image ${res.filename} uploaded successfully to ~/.netlabctl/images`,
+      });
+      if (onImportSuccess) {
+        onImportSuccess();
+      }
+    } catch (err) {
+      setIsUploadingImage(false);
+      setImageUploadStatus({
+        type: "error",
+        message: err.message || "Failed to upload disk image.",
+      });
+    }
+  };
 
   const handleProcessFile = async (file) => {
     if (!file) return;
@@ -326,6 +357,147 @@ export function SettingsModal({ isOpen, onClose, config, onUpdateConfig, onImpor
                 <AlertCircle size={18} style={{ flexShrink: 0 }} />
               )}
               <div style={{ flex: 1 }}>{uploadStatus.message}</div>
+            </div>
+          )}
+
+          {/* Section: Upload Disk Images */}
+          <div
+            style={{
+              fontWeight: 600,
+              fontSize: "0.85rem",
+              color: "var(--text-muted)",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+              marginTop: "12px",
+            }}
+          >
+            Disk Images (~/.netlabctl/images)
+          </div>
+
+          <input
+            type="file"
+            ref={imageInputRef}
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                handleImageUpload(e.target.files[0]);
+              }
+            }}
+            accept=".qcow2,.img,.iso,.vmdk,.raw,.bin"
+            style={{ display: "none" }}
+          />
+
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDraggingImage(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              setIsDraggingImage(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDraggingImage(false);
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleImageUpload(e.dataTransfer.files[0]);
+              }
+            }}
+            onClick={() => imageInputRef.current?.click()}
+            onKeyDown={(e) =>
+              (e.key === "Enter" || e.key === " ") && imageInputRef.current?.click()
+            }
+            role="button"
+            tabIndex={0}
+            style={{
+              background: isDraggingImage ? "rgba(168, 85, 247, 0.15)" : "rgba(15, 23, 42, 0.6)",
+              border: isDraggingImage ? "2px dashed #a855f7" : "2px dashed var(--border-color)",
+              borderRadius: "8px",
+              padding: "20px 16px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+            }}
+          >
+            {isUploadingImage ? (
+              <>
+                <Loader2
+                  size={28}
+                  style={{ color: "#a855f7", animation: "spin 1s linear infinite" }}
+                />
+                <div style={{ fontSize: "0.85rem", color: "var(--text-main)", fontWeight: 500 }}>
+                  Uploading Disk Image to ~/.netlabctl/images...
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    borderRadius: "50%",
+                    background: "rgba(168, 85, 247, 0.1)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <HardDrive size={22} style={{ color: "#a855f7" }} />
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: "0.85rem", color: "var(--text-main)", fontWeight: 600 }}>
+                    Upload QCOW2 / Disk Image File
+                  </div>
+                  <div
+                    style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}
+                  >
+                    Select or drag{" "}
+                    <code style={{ background: "rgba(0,0,0,0.4)", padding: "1px 3px" }}>
+                      .qcow2
+                    </code>
+                    ,{" "}
+                    <code style={{ background: "rgba(0,0,0,0.4)", padding: "1px 3px" }}>.img</code>,{" "}
+                    <code style={{ background: "rgba(0,0,0,0.4)", padding: "1px 3px" }}>.iso</code>{" "}
+                    to store in{" "}
+                    <code style={{ background: "rgba(0,0,0,0.4)", padding: "1px 3px" }}>
+                      ~/.netlabctl/images
+                    </code>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {imageUploadStatus && (
+            <div
+              style={{
+                background:
+                  imageUploadStatus.type === "success"
+                    ? "rgba(34, 197, 94, 0.15)"
+                    : "rgba(239, 68, 68, 0.15)",
+                border: `1px solid ${
+                  imageUploadStatus.type === "success"
+                    ? "rgba(34, 197, 94, 0.4)"
+                    : "rgba(239, 68, 68, 0.4)"
+                }`,
+                borderRadius: "8px",
+                padding: "10px 14px",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                fontSize: "0.85rem",
+                color: imageUploadStatus.type === "success" ? "#4ade80" : "#f87171",
+              }}
+            >
+              {imageUploadStatus.type === "success" ? (
+                <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
+              ) : (
+                <AlertCircle size={18} style={{ flexShrink: 0 }} />
+              )}
+              <div style={{ flex: 1 }}>{imageUploadStatus.message}</div>
             </div>
           )}
         </div>

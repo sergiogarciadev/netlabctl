@@ -43,6 +43,26 @@ export async function importTemplateZip(file) {
   return res.json();
 }
 
+export async function fetchImages() {
+  const res = await fetch("/api/images");
+  if (!res.ok) await handleErrorResponse(res, "Failed to fetch disk images");
+  return res.json();
+}
+
+export async function uploadDiskImage(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("/api/images/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) await handleErrorResponse(res, "Failed to upload disk image");
+
+  return res.json();
+}
+
 export async function fetchProjects() {
   const res = await fetch("/api/projects");
   if (!res.ok) await handleErrorResponse(res, "Failed to fetch projects");
