@@ -1841,6 +1841,11 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         ? nodeGroup.getScaledHeight()
         : (nodeGroup.height || 50) * scaleY;
 
+    // In Fabric.js v7, nodeGroup.left and nodeGroup.top represent the CENTER of the group.
+    // Top-left origin of the device on the canvas:
+    const topLeftX = nodeGroup.left - groupWidth / 2;
+    const topLeftY = nodeGroup.top - groupHeight / 2;
+
     const idx = nodePorts.findIndex((p) => p.id === portId || p.name === portId);
     const portIndex = idx >= 0 ? idx : 0;
     const count = nodePorts.length || 1;
@@ -1857,8 +1862,8 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     }
 
     return {
-      x: nodeGroup.left + groupWidth * fracX,
-      y: nodeGroup.top + groupHeight * fracY,
+      x: topLeftX + groupWidth * fracX,
+      y: topLeftY + groupHeight * fracY,
     };
   };
 
