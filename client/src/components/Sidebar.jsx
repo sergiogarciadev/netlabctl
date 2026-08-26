@@ -721,7 +721,6 @@ export function Sidebar({
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {selectedNode.ports?.map((port) => {
             const { isConnected, wire, remoteNode, remotePortName } = getConnectedWireInfo(port.id);
-            const isEditingTzsp = activeTzspPortId === port.id;
 
             const activePort = draftPortsMap[port.id] || port;
             const hasPendingDraft = !!draftPortsMap[port.id];
