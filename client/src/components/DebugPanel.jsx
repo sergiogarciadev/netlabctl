@@ -1,7 +1,8 @@
-import { Activity, Bug, ChevronDown, Crosshair, Play, X } from "lucide-react";
+import { Activity, Bug, ChevronDown, Crosshair, ListFilter, Play, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export function DebugPanel({ debugInfo }) {
+  const [showAllPorts, setShowAllPorts] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem("netlabctl_debug_hud_collapsed") === "true";
   });
@@ -206,6 +207,84 @@ export function DebugPanel({ debugInfo }) {
             </div>
           )}
         </div>
+
+        {/* All Device Ports Positions */}
+        {debugInfo.allDevicePorts && debugInfo.allDevicePorts.length > 0 && (
+          <div style={{ marginTop: "6px", paddingTop: "6px", borderTop: "1px solid #1e293b" }}>
+            <button
+              type="button"
+              onClick={() => setShowAllPorts((prev) => !prev)}
+              style={{
+                width: "100%",
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                fontWeight: 600,
+                color: "#38bdf8",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <ListFilter size={12} /> All Ports Positions (
+                {debugInfo.nodeName || debugInfo.nodeId || "Device"}):
+              </div>
+              <ChevronDown
+                size={14}
+                style={{
+                  transform: showAllPorts ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.2s ease",
+                }}
+              />
+            </button>
+
+            {showAllPorts && (
+              <div
+                style={{
+                  marginTop: "6px",
+                  maxHeight: "130px",
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px",
+                  background: "rgba(15, 23, 42, 0.6)",
+                  padding: "6px",
+                  borderRadius: "4px",
+                  border: "1px solid rgba(56, 189, 248, 0.2)",
+                }}
+              >
+                {debugInfo.allDevicePorts.map((p) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      fontSize: "0.72rem",
+                      padding: "2px 4px",
+                      background: "rgba(255, 255, 255, 0.03)",
+                      borderRadius: "3px",
+                    }}
+                  >
+                    <div>
+                      <strong style={{ color: p.type === "managed" ? "#10b981" : "#38bdf8" }}>
+                        {p.id}
+                      </strong>{" "}
+                      {p.name && p.name !== p.id && (
+                        <span style={{ color: "#94a3b8", fontSize: "0.68rem" }}>({p.name})</span>
+                      )}
+                    </div>
+                    <div style={{ color: "#f8fafc", fontFamily: "var(--font-mono)" }}>
+                      X: {p.x}, Y: {p.y}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Hovered Wire Inspection */}
         <div style={{ marginTop: "6px", paddingTop: "6px", borderTop: "1px stroke #1e293b" }}>

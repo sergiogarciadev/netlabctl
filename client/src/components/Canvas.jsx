@@ -639,13 +639,36 @@ export function Canvas({
             hoveredWireId,
             isWiring,
           };
+
+          let allDevicePorts = null;
+          let targetNodeGroup = null;
+          if (nodeId) {
+            targetNodeGroup = canvas
+              .getObjects()
+              .find((obj) => obj.isNodeGroup && obj.nodeData?.id === nodeId);
+          }
+          if (targetNodeGroup && targetNodeGroup.nodeData) {
+            allDevicePorts = (targetNodeGroup.nodeData.ports || []).map((p) => {
+              const pos = targetNodeGroup.getPortAbsPosition(p.id);
+              return {
+                id: p.id,
+                name: p.name || p.id,
+                type: p.type || p.netdevType || "managed",
+                x: Math.round(pos?.x || 0),
+                y: Math.round(pos?.y || 0),
+              };
+            });
+          }
+
           setDebugInfo({
             activeTool: activeToolRef.current,
             pointer: { x: Math.round(pointer.x), y: Math.round(pointer.y) },
             nodeId,
+            nodeName: targetNodeGroup?.nodeData?.name,
             subTargetTag,
             nearestPort,
             hoveredWire,
+            allDevicePorts,
             onTestPulseWire: handleTestPulseWire,
             isWiring,
             srcPortId: wiringStateRef.current.srcPortId,
