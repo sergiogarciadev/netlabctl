@@ -1932,6 +1932,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   }
 
   nodeGroup.isNodeGroup = true;
+  nodeGroup.nodeData = node;
   nodeGroup.getPortElement = (portId) => {
     if (!portId) return null;
     let elem = portElementsMap.get(portId);
