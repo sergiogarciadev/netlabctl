@@ -528,12 +528,28 @@ export function App() {
         const newHeight = 90;
         const margin = 35;
 
-        const vp = currentViewportRef.current || { viewLeft: 0, viewTop: 0 };
-        // Start searching for a free space inside the currently displayed canvas viewport!
-        const startX = Math.max(50, Math.round((vp.viewLeft || 0) + 80));
-        const startY = Math.max(50, Math.round((vp.viewTop || 0) + 80));
-        const stepY = 180;
-        const maxCols = 4;
+        const vp = currentViewportRef.current || {
+          viewLeft: 0,
+          viewTop: 0,
+          viewWidth: 1200,
+          viewHeight: 800,
+        };
+
+        const viewLeft = vp.viewLeft || 0;
+        const viewTop = vp.viewTop || 0;
+        const viewWidth = vp.viewWidth || 1200;
+        const viewHeight = vp.viewHeight || 800;
+
+        // Calculate visible viewport center
+        const centerX = viewLeft + viewWidth / 2;
+        const centerY = viewTop + viewHeight / 2;
+
+        // Ideal position centers the device in the user's view
+        const targetX = Math.max(50, Math.round(centerX - newWidth / 2));
+        const targetY = Math.max(50, Math.round(centerY - newHeight / 2));
+
+        const stepX = Math.max(240, newWidth + 60);
+        const stepY = 160;
 
         const isOverlapping = (x, y) => {
           const candLeft = x - margin;
@@ -559,29 +575,29 @@ export function App() {
           return false;
         };
 
-        let posX = startX;
-        let posY = startY;
+        let posX = targetX;
+        let posY = targetY;
         let foundFree = false;
 
-        for (let r = 0; r < 50; r++) {
-          let currentX = startX;
-          for (let c = 0; c < maxCols; c++) {
-            const cy = startY + r * stepY;
-            if (!isOverlapping(currentX, cy)) {
-              posX = currentX;
-              posY = cy;
-              foundFree = true;
-              break;
+        // Search in expanding concentric rings around the visible center
+        for (let ring = 0; ring <= 10; ring++) {
+          for (let dx = -ring; dx <= ring; dx++) {
+            for (let dy = -ring; dy <= ring; dy++) {
+              if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+
+              const cx = Math.max(30, Math.round(targetX + dx * stepX));
+              const cy = Math.max(30, Math.round(targetY + dy * stepY));
+
+              if (!isOverlapping(cx, cy)) {
+                posX = cx;
+                posY = cy;
+                foundFree = true;
+                break;
+              }
             }
-            currentX += Math.max(240, newWidth + 60);
+            if (foundFree) break;
           }
           if (foundFree) break;
-        }
-
-        if (!foundFree) {
-          const count = existingNodes.length;
-          posX = startX + ((count * 40) % 200);
-          posY = startY + Math.floor(count / maxCols) * stepY;
         }
 
         console.log("[NETLAB-APP-DEBUG] Adding node from template:", tmpl.id, { posX, posY });
