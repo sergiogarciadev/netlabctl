@@ -1820,23 +1820,31 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
 
         const isConnected = wires.some(
           (w) =>
-            (w.srcNodeId === node.id && w.srcPortId === port.id) ||
-            (w.dstNodeId === node.id && w.dstPortId === port.id),
+            (w.srcNodeId === node.id &&
+              (w.srcPortId === port.id ||
+                w.srcPortId === port.name ||
+                w.srcPortId === `device-port-${port.id}` ||
+                w.srcPortId === `device-port-${idx + 1}`)) ||
+            (w.dstNodeId === node.id &&
+              (w.dstPortId === port.id ||
+                w.dstPortId === port.name ||
+                w.dstPortId === `device-port-${port.id}` ||
+                w.dstPortId === `device-port-${idx + 1}`)),
         );
 
         let basePortColor = "#4d4d4d";
         if (isConnected) {
-          basePortColor = "#00ff00";
+          basePortColor = "#10b981"; // Connected Green
         } else if (pType === "unmanaged") {
-          basePortColor = "#38bdf8";
+          basePortColor = "#38bdf8"; // Unmanaged Sky Blue
         } else if (pType === "user" || pType === "slirp") {
-          basePortColor = "#3b82f6";
+          basePortColor = "#3b82f6"; // User / SLIRP Blue
         } else if (pType === "bridge") {
-          basePortColor = "#a855f7";
+          basePortColor = "#a855f7"; // Bridge Purple
         } else if (pType === "tap") {
-          basePortColor = "#f59e0b";
+          basePortColor = "#f59e0b"; // TAP Amber
         } else {
-          basePortColor = "#4d4d4d";
+          basePortColor = "#4d4d4d"; // Disconnected Dark Grey
         }
 
         const tagChildren = (targetObj) => {
@@ -1849,7 +1857,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
             : activeTool === "wire"
               ? "crosshair"
               : "pointer";
-          if (typeof targetObj.set === "function") {
+          if (typeof targetObj.set === "function" && targetObj.type !== "text") {
             targetObj.set({ fill: basePortColor });
           }
           if (targetObj._objects && Array.isArray(targetObj._objects)) {
