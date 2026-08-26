@@ -1702,29 +1702,19 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
             (w.dstNodeId === node.id && w.dstPortId === port.id),
         );
 
-        const isRunning =
-          node.power === "started" ||
-          node.power === "running" ||
-          node.power === "on" ||
-          node.status === "running";
-
         let basePortColor = "#4d4d4d";
-        if (pType === "managed") {
-          if (isConnected && isRunning) {
-            basePortColor = "#00ff00";
-          } else if (isConnected) {
-            basePortColor = "#15803d";
-          } else {
-            basePortColor = "#4d4d4d";
-          }
+        if (isConnected) {
+          basePortColor = "#00ff00";
         } else if (pType === "unmanaged") {
-          basePortColor = isRunning ? "#38bdf8" : "#64748b";
+          basePortColor = "#38bdf8";
         } else if (pType === "user" || pType === "slirp") {
-          basePortColor = isRunning ? "#3b82f6" : "#1e40af";
+          basePortColor = "#3b82f6";
         } else if (pType === "bridge") {
-          basePortColor = isRunning ? "#a855f7" : "#6b21a8";
+          basePortColor = "#a855f7";
         } else if (pType === "tap") {
-          basePortColor = isRunning ? "#f59e0b" : "#92400e";
+          basePortColor = "#f59e0b";
+        } else {
+          basePortColor = "#4d4d4d";
         }
 
         if (typeof obj.set === "function") {
@@ -1802,24 +1792,34 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   nodeGroup.getPortAbsPosition = (portId) => {
     if (portElementsMap.has(portId)) {
       const portObj = portElementsMap.get(portId);
-      if (portObj && typeof portObj.getCenterPoint === "function") {
-        const pt = portObj.getCenterPoint();
-        if (pt && !Number.isNaN(pt.x) && !Number.isNaN(pt.y)) {
-          return pt;
+      if (portObj && typeof portObj.calcTransformMatrix === "function") {
+        const matrix = portObj.calcTransformMatrix();
+        if (matrix && matrix.length >= 6) {
+          const absX = matrix[4];
+          const absY = matrix[5];
+          if (!Number.isNaN(absX) && !Number.isNaN(absY)) {
+            return { x: absX, y: absY };
+          }
         }
       }
     }
     const relPos = nodeGroup.portRelativePositions.get(portId);
     if (relPos) {
+      const scaleX = nodeGroup.scaleX || 1;
+      const scaleY = nodeGroup.scaleY || 1;
       return {
-        x: nodeGroup.left + relPos.x,
-        y: nodeGroup.top + relPos.y,
+        x: nodeGroup.left + relPos.x * scaleX,
+        y: nodeGroup.top + relPos.y * scaleY,
       };
     }
 
     return {
-      x: nodeGroup.left + (nodeGroup.width || 120) / 2,
-      y: nodeGroup.top + (nodeGroup.height || 50) / 2,
+      x:
+        nodeGroup.left +
+        (nodeGroup.getScaledWidth ? nodeGroup.getScaledWidth() : nodeGroup.width || 120) / 2,
+      y:
+        nodeGroup.top +
+        (nodeGroup.getScaledHeight ? nodeGroup.getScaledHeight() : nodeGroup.height || 50) / 2,
     };
   };
 
