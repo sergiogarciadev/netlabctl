@@ -512,7 +512,11 @@ func (s *Server) handleStartSingleNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logger.Log.Info("REST API: Start single node", "id", id, "nodeId", nodeID)
-	s.hub.startSingleNode(id, nodeID)
+	err := s.hub.startSingleNode(id, nodeID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "running", "nodeId": nodeID})

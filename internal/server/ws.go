@@ -430,6 +430,12 @@ func (h *WSHub) startProjectSimulation(projectID string) {
 			_, err := h.qemuMgr.StartNode(projectID, node, tmplDir, tmpl, portAddrs)
 			if err != nil {
 				logger.Log.Error("Failed to start node instance", "nodeID", node.ID, "error", err)
+				node.Status = "error"
+				node.Power = "off"
+				h.BroadcastToProject(projectID, "error", map[string]string{
+					"message": fmt.Sprintf("Failed to start node %s: %v", node.Name, err),
+					"nodeId":  node.ID,
+				})
 			} else {
 				startedNodes[node.ID] = true
 				node.Status = "running"
@@ -454,11 +460,11 @@ func (h *WSHub) startProjectSimulation(projectID string) {
 	h.BroadcastToProject(projectID, "simulation_started", map[string]string{"status": "running"})
 }
 
-func (h *WSHub) startSingleNode(projectID string, nodeID string) {
+func (h *WSHub) startSingleNode(projectID string, nodeID string) error {
 	top, err := h.storage.GetProject(projectID)
 	if err != nil {
 		logger.Log.Error("Failed to get project for starting single node", "error", err)
-		return
+		return err
 	}
 
 	if top.SimulationStatus != "running" {
@@ -497,13 +503,22 @@ func (h *WSHub) startSingleNode(projectID string, nodeID string) {
 
 	if targetNode == nil {
 		logger.Log.Error("Node not found for start", "nodeID", nodeID)
-		return
+		return fmt.Errorf("node %s not found", nodeID)
 	}
 
 	tmpl, tmplDir, _ := h.storage.GetTemplate(targetNode.TemplateID)
 	_, err = h.qemuMgr.StartNode(projectID, targetNode, tmplDir, tmpl, portAddrs)
 	if err != nil {
 		logger.Log.Error("Failed to start single node QEMU instance", "nodeID", nodeID, "error", err)
+		targetNode.Status = "error"
+		targetNode.Power = "off"
+		_ = h.storage.SaveProject(top)
+		h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
+		h.BroadcastToProject(projectID, "error", map[string]string{
+			"message": fmt.Sprintf("Failed to start %s: %v", targetNode.Name, err),
+			"nodeId":  nodeID,
+		})
+		return err
 	}
 
 	go func() {
@@ -513,6 +528,7 @@ func (h *WSHub) startSingleNode(projectID string, nodeID string) {
 
 	_ = h.storage.SaveProject(top)
 	h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
+	return nil
 }
 
 func (h *WSHub) shutdownSingleNode(projectID string, nodeID string) {

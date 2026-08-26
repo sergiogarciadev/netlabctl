@@ -338,10 +338,11 @@ export function App() {
       if (msg.type === "project_state") {
         console.log("[NETLAB-APP-DEBUG] Received WS project_state:", msg.data);
         updateProjectState(msg.data);
-      } else if (msg.type === "wire_stats") {
-        if (Array.isArray(msg.data?.stats)) {
-          setWireStats(msg.data.stats);
-        }
+      } else if (msg.type === "error") {
+        console.error("[NETLAB-APP-DEBUG] Received WS error message:", msg.data);
+        const text =
+          msg.data?.message || (typeof msg.data === "string" ? msg.data : "Server execution error");
+        showError(text);
       }
     });
     ws.connect();
@@ -349,7 +350,7 @@ export function App() {
     wsClientRef.current = ws;
 
     return () => ws.disconnect();
-  }, [loadProjectsList]);
+  }, [loadProjectsList, showError]);
 
   const handleStartLab = useCallback(async () => {
     try {

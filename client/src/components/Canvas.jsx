@@ -1,6 +1,7 @@
 import {
   Circle,
   Canvas as FabricCanvas,
+  Text as FabricText,
   Group,
   Polygon,
   Polyline,
