@@ -1456,10 +1456,16 @@ function updateWirePositions(
   }
 
   const allNodeGroups = canvas.getObjects().filter((obj) => obj.isNodeGroup);
+  const getNodeGroup = (nodeId) => {
+    if (nodeGroupsMap && nodeGroupsMap.has(nodeId)) {
+      return nodeGroupsMap.get(nodeId);
+    }
+    return allNodeGroups.find((g) => g.nodeData?.id === nodeId);
+  };
 
   for (const wire of wires) {
-    const srcGroup = nodeGroupsMap.get(wire.srcNodeId);
-    const dstGroup = nodeGroupsMap.get(wire.dstNodeId);
+    const srcGroup = getNodeGroup(wire.srcNodeId);
+    const dstGroup = getNodeGroup(wire.dstNodeId);
 
     if (srcGroup && dstGroup) {
       const p1 = srcGroup.getPortAbsPosition(wire.srcPortId);
@@ -1985,15 +1991,43 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
 
     const activePortMap = nodeGroup.svgPortMap || svgPortMap;
     let portFrac = activePortMap ? activePortMap.get(portId) : null;
-    if (!portFrac && activePortMap) {
-      const idx = nodePorts.findIndex((p) => p.id === portId || p.name === portId);
+
+    if (!portFrac && activePortMap && portId) {
+      const cleanId = String(portId).toLowerCase();
+      portFrac =
+        activePortMap.get(cleanId) ||
+        activePortMap.get(`device-port-${cleanId}`) ||
+        activePortMap.get(`port-${cleanId}`);
+    }
+
+    if (!portFrac && activePortMap && nodePorts) {
+      const idx = nodePorts.findIndex((p, i) => {
+        if (!p) return false;
+        const pId = String(p.id || "").toLowerCase();
+        const pName = String(p.name || "").toLowerCase();
+        const targetId = String(portId || "").toLowerCase();
+        return (
+          pId === targetId ||
+          pName === targetId ||
+          `device-port-${pId}` === targetId ||
+          `device-port-${i + 1}` === targetId ||
+          `port-${pId}` === targetId ||
+          `port-${i + 1}` === targetId ||
+          String(i + 1) === targetId ||
+          `eth${i}` === targetId ||
+          `ether${i + 1}` === targetId
+        );
+      });
+
       if (idx >= 0) {
         const targetPort = nodePorts[idx];
         portFrac =
           activePortMap.get(targetPort.id) ||
           activePortMap.get(targetPort.name) ||
           activePortMap.get(`device-port-${targetPort.id}`) ||
-          activePortMap.get(`device-port-${idx + 1}`);
+          activePortMap.get(`device-port-${idx + 1}`) ||
+          activePortMap.get(`port-${targetPort.id}`) ||
+          activePortMap.get(`port-${idx + 1}`);
       }
     }
 
