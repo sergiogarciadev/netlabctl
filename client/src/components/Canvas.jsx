@@ -28,6 +28,7 @@ export function Canvas({
   onDeleteWire,
   onDeleteNode,
   onUpdateNode,
+  onViewportChange,
   showDebugHud = true,
 }) {
   const containerRef = useRef(null);
@@ -82,6 +83,35 @@ export function Canvas({
   useEffect(() => {
     onUpdateNodeRef.current = onUpdateNode;
   }, [onUpdateNode]);
+
+  const onViewportChangeRef = useRef(onViewportChange);
+  useEffect(() => {
+    onViewportChangeRef.current = onViewportChange;
+  }, [onViewportChange]);
+
+  const notifyViewportChange = useCallback(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || canvas.isDisposed || !onViewportChangeRef.current) return;
+    const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+    const zoom = vpt[0] || 1;
+    const vptX = vpt[4] || 0;
+    const vptY = vpt[5] || 0;
+    const cWidth = containerRef.current?.clientWidth || canvas.width || 1200;
+    const cHeight = containerRef.current?.clientHeight || canvas.height || 800;
+
+    const viewLeft = -vptX / zoom;
+    const viewTop = -vptY / zoom;
+    const viewWidth = cWidth / zoom;
+    const viewHeight = cHeight / zoom;
+
+    onViewportChangeRef.current({
+      viewLeft,
+      viewTop,
+      viewWidth,
+      viewHeight,
+      zoom,
+    });
+  }, []);
 
   // Isolated local debug info state
   const [debugInfo, setDebugInfo] = useState(null);
@@ -307,6 +337,7 @@ export function Canvas({
       viewportTransformRef.current = [...canvas.viewportTransform];
     }
     setZoomLevel(Math.round(zoom * 100));
+    notifyViewportChange();
   };
 
   const handleZoomOut = () => {
@@ -319,6 +350,7 @@ export function Canvas({
       viewportTransformRef.current = [...canvas.viewportTransform];
     }
     setZoomLevel(Math.round(zoom * 100));
+    notifyViewportChange();
   };
 
   const handleResetZoom = () => {
@@ -327,6 +359,7 @@ export function Canvas({
     canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
     viewportTransformRef.current = [1, 0, 0, 1, 0, 0];
     setZoomLevel(100);
+    notifyViewportChange();
   };
 
   // Initialize Fabric Canvas — runs exactly once on mount.
@@ -404,6 +437,7 @@ export function Canvas({
         viewportTransformRef.current = [...canvas.viewportTransform];
       }
       setZoomLevel(Math.round(zoom * 100));
+      notifyViewportChange();
 
       opt.e.preventDefault();
       opt.e.stopPropagation();
@@ -422,6 +456,7 @@ export function Canvas({
         panStateRef.current.lastPosY = evt.clientY;
         viewportTransformRef.current = [...vpt];
         canvas.requestRenderAll();
+        notifyViewportChange();
         return;
       }
 
@@ -785,7 +820,10 @@ export function Canvas({
         panStateRef.current.isPanning = false;
         canvas.selection = activeToolRef.current === "select";
       }
+      notifyViewportChange();
     });
+
+    notifyViewportChange();
 
     return () => {
       window.removeEventListener("resize", handleResize);

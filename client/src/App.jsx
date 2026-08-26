@@ -136,6 +136,18 @@ export function App() {
 
   const wsClientRef = useRef(null);
 
+  const currentViewportRef = useRef({
+    viewLeft: 0,
+    viewTop: 0,
+    viewWidth: 1200,
+    viewHeight: 800,
+    zoom: 1,
+  });
+
+  const handleViewportChange = useCallback((vp) => {
+    currentViewportRef.current = vp;
+  }, []);
+
   const updateHistoryButtons = useCallback(() => {
     setCanUndo(historyIndexRef.current > 0);
     setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
@@ -516,8 +528,10 @@ export function App() {
         const newHeight = 90;
         const margin = 35;
 
-        const startX = 100;
-        const startY = 120;
+        const vp = currentViewportRef.current || { viewLeft: 0, viewTop: 0 };
+        // Start searching for a free space inside the currently displayed canvas viewport!
+        const startX = Math.max(50, Math.round((vp.viewLeft || 0) + 80));
+        const startY = Math.max(50, Math.round((vp.viewTop || 0) + 80));
         const stepY = 180;
         const maxCols = 4;
 
@@ -745,6 +759,7 @@ export function App() {
           onDeleteWire={handleDeleteWire}
           onDeleteNode={handleDeleteNode}
           onUpdateNode={handleUpdateNode}
+          onViewportChange={handleViewportChange}
           showDebugHud={config.showDebugHud !== false}
         />
 
