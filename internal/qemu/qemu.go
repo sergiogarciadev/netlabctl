@@ -290,6 +290,13 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 				"-device", devArg,
 			)
 
+		case "unmanaged":
+			hubID := 100 + i
+			args = append(args,
+				"-netdev", fmt.Sprintf("hubport,id=%s,hubid=%d", netdevID, hubID),
+				"-device", devArg,
+			)
+
 		default: // "managed"
 			portKey := fmt.Sprintf("%s:%s", node.ID, port.ID)
 			targetAddr, ok := portAddrs[portKey]
@@ -414,28 +421,37 @@ func (m *Manager) SetNodePortsLinkStatus(projectID, nodeID string, portStates []
 		return fmt.Errorf("invalid node directory for node %s", nodeID)
 	}
 	monitorSock := filepath.Join(nDir, "monitor.sock")
-	if _, err := os.Stat(monitorSock); os.IsNotExist(err) {
-		return nil
-	}
 
-	conn, err := net.DialTimeout("unix", monitorSock, 1*time.Second)
-	if err != nil {
-		return fmt.Errorf("failed to dial QEMU monitor socket for node %s: %w", nodeID, err)
+	// Retry dialing UNIX monitor socket to handle QEMU startup delays
+	var conn net.Conn
+	var dialErr error
+	for attempt := 0; attempt < 10; attempt++ {
+		conn, dialErr = net.DialTimeout("unix", monitorSock, 500*time.Millisecond)
+		if dialErr == nil {
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	if dialErr != nil {
+		return fmt.Errorf("failed to dial QEMU monitor socket for node %s after retries: %w", nodeID, dialErr)
 	}
 	defer conn.Close()
 
 	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
 
 	var buf strings.Builder
-	for _, ps := range portStates {
+	for i, ps := range portStates {
 		stateStr := "off"
 		if ps.LinkOn {
 			stateStr = "on"
 		}
-		buf.WriteString(fmt.Sprintf("set_link %s %s\n", ps.DeviceID, stateStr))
+		devID := ps.DeviceID
+		netdevID := fmt.Sprintf("net%d", i)
+		buf.WriteString(fmt.Sprintf("set_link %s %s\n", devID, stateStr))
+		buf.WriteString(fmt.Sprintf("set_link %s %s\n", netdevID, stateStr))
 	}
 
-	_, err = conn.Write([]byte(buf.String()))
+	_, err := conn.Write([]byte(buf.String()))
 	if err != nil {
 		return fmt.Errorf("failed to send set_link batch to monitor for node %s: %w", nodeID, err)
 	}

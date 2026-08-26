@@ -1702,17 +1702,29 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
             (w.dstNodeId === node.id && w.dstPortId === port.id),
         );
 
+        const isRunning =
+          node.power === "started" ||
+          node.power === "running" ||
+          node.power === "on" ||
+          node.status === "running";
+
         let basePortColor = "#4d4d4d";
-        if (isConnected) {
-          basePortColor = "#00ff00";
-        } else if (pType === "user" || pType === "slirp") {
-          basePortColor = "#3b82f6";
-        } else if (pType === "bridge") {
-          basePortColor = "#a855f7";
-        } else if (pType === "tap") {
-          basePortColor = "#f59e0b";
+        if (pType === "managed") {
+          if (isConnected && isRunning) {
+            basePortColor = "#00ff00";
+          } else if (isConnected) {
+            basePortColor = "#15803d";
+          } else {
+            basePortColor = "#4d4d4d";
+          }
         } else if (pType === "unmanaged") {
-          basePortColor = "#64748b";
+          basePortColor = isRunning ? "#38bdf8" : "#64748b";
+        } else if (pType === "user" || pType === "slirp") {
+          basePortColor = isRunning ? "#3b82f6" : "#1e40af";
+        } else if (pType === "bridge") {
+          basePortColor = isRunning ? "#a855f7" : "#6b21a8";
+        } else if (pType === "tap") {
+          basePortColor = isRunning ? "#f59e0b" : "#92400e";
         }
 
         if (typeof obj.set === "function") {
