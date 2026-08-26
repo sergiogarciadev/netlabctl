@@ -15,6 +15,7 @@ import {
   fetchProject,
   fetchProjects,
   fetchTemplates,
+  importProjectTopology,
   importTemplateZip,
   recreateNodeDisk,
   resetNodePower,
@@ -294,6 +295,49 @@ export function App() {
       alert("Failed to delete project.");
     }
   }, [projects, handleSwitchProject]);
+
+  const handleRenameProject = useCallback(async () => {
+    const current = projectRef.current;
+    const newName = window.prompt("Rename Lab Project:", current.name || "");
+    if (!newName || newName.trim() === "" || newName === current.name) return;
+    const updated = { ...current, name: newName.trim() };
+    await commitProjectUpdate(updated);
+    await loadProjectsList();
+  }, [commitProjectUpdate, loadProjectsList]);
+
+  const handleExportProject = useCallback(() => {
+    const current = projectRef.current;
+    const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(current, null, 2))}`;
+    const downloadAnchor = document.createElement("a");
+    const safeName = (current.name || "topology").toLowerCase().replace(/[^a-z0-9_-]/gi, "_");
+    const filename = `${safeName}_topology.json`;
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", filename);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  }, []);
+
+  const handleImportProject = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        const imported = await importProjectTopology(json);
+        await handleSwitchProject(imported.id);
+        await loadProjectsList();
+      } catch (err) {
+        console.error("[NETLAB-APP-DEBUG] Failed to import project topology:", err);
+        showError(`Failed to import topology: ${err.message || "Invalid JSON file"}`);
+      }
+    };
+    input.click();
+  }, [handleSwitchProject, loadProjectsList, showError]);
 
   useEffect(() => {
     fetchTemplates()
@@ -596,7 +640,10 @@ export function App() {
         currentProjectId={project.id}
         onSwitchProject={handleSwitchProject}
         onCreateProject={handleCreateProject}
+        onRenameProject={handleRenameProject}
         onCloneProject={handleCloneProject}
+        onImportProject={handleImportProject}
+        onExportProject={handleExportProject}
         onDeleteProject={handleDeleteProject}
         isRunning={isRunning}
         activeTool={activeTool}

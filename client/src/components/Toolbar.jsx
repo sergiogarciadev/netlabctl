@@ -1,6 +1,8 @@
 import {
   Cable,
   Copy,
+  Download,
+  Edit2,
   FolderPlus,
   MousePointer,
   Network,
@@ -12,6 +14,7 @@ import {
   Square,
   Terminal as TerminalIcon,
   Trash2,
+  Upload,
 } from "lucide-react";
 
 export function Toolbar({
@@ -20,7 +23,10 @@ export function Toolbar({
   currentProjectId,
   onSwitchProject,
   onCreateProject,
+  onRenameProject,
   onCloneProject,
+  onImportProject,
+  onExportProject,
   onDeleteProject,
   isRunning,
   activeTool,
@@ -76,8 +82,18 @@ export function Toolbar({
             type="button"
             className="btn"
             style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+            onClick={onRenameProject}
+            title="Rename Active Lab Project"
+          >
+            <Edit2 size={13} /> Rename
+          </button>
+
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: "4px 8px", fontSize: "0.75rem" }}
             onClick={onCreateProject}
-            title="Create New Lab / Project"
+            title="Create New Lab Project"
           >
             <FolderPlus size={13} /> New
           </button>
@@ -90,6 +106,26 @@ export function Toolbar({
             title="Clone Current Lab"
           >
             <Copy size={13} /> Clone
+          </button>
+
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+            onClick={onImportProject}
+            title="Import Topology JSON File"
+          >
+            <Upload size={13} /> Import
+          </button>
+
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+            onClick={onExportProject}
+            title="Export Lab Topology JSON File"
+          >
+            <Download size={13} /> Export
           </button>
 
           <button

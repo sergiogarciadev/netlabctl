@@ -58,6 +58,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/templates/{id}/drawing", s.handleGetTemplateDrawing)
 	s.mux.HandleFunc("GET /api/projects", s.handleListProjects)
 	s.mux.HandleFunc("POST /api/projects", s.handleCreateProject)
+	s.mux.HandleFunc("POST /api/projects/import", s.handleImportProject)
 	s.mux.HandleFunc("GET /api/projects/{id}", s.handleGetProject)
 	s.mux.HandleFunc("PUT /api/projects/{id}", s.handleUpdateProject)
 	s.mux.HandleFunc("DELETE /api/projects/{id}", s.handleDeleteProject)

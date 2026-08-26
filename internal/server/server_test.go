@@ -105,3 +105,52 @@ func TestRESTEndpoints(t *testing.T) {
 		}
 	}
 }
+
+func TestImportProjectTopology(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "netlabctl_import_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	store, err := storage.NewStorage(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+
+	srv := NewServer(":0", store)
+	router := srv.Router()
+
+	importedJSON := `{
+		"id": "imported-lab-1",
+		"name": "Imported Test Lab",
+		"nodes": [
+			{ "id": "node-1", "name": "R1", "templateId": "Mikrotik-4port", "x": 100, "y": 100 }
+		],
+		"wires": []
+	}`
+
+	req := httptest.NewRequest("POST", "/api/projects/import", strings.NewReader(importedJSON))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("POST /api/projects/import returned status %d, expected 201. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	var importedTop model.Topology
+	if err := json.Unmarshal(rec.Body.Bytes(), &importedTop); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if importedTop.Name != "Imported Test Lab" || len(importedTop.Nodes) != 1 {
+		t.Fatalf("Unexpected imported topology: %+v", importedTop)
+	}
+
+	// Verify project exists in storage
+	stored, err := store.GetProject("imported-lab-1")
+	if err != nil || stored.Name != "Imported Test Lab" {
+		t.Fatalf("GetProject failed for imported project: %v", err)
+	}
+}

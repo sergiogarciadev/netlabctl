@@ -12,6 +12,7 @@ import (
 
 	"netlabctl/internal/logger"
 	"netlabctl/internal/model"
+	"netlabctl/internal/storage"
 )
 
 func (s *Server) handleListTemplates(w http.ResponseWriter, r *http.Request) {
@@ -369,6 +370,47 @@ func (s *Server) handleCloneProject(w http.ResponseWriter, r *http.Request) {
 	logger.Log.Info("Cloned project successfully", "origID", id, "newID", newID, "name", newName)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(clonedTop)
+}
+
+func (s *Server) handleImportProject(w http.ResponseWriter, r *http.Request) {
+	var importedTop model.Topology
+	if err := json.NewDecoder(r.Body).Decode(&importedTop); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid topology JSON: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if importedTop.ID == "" {
+		importedTop.ID = fmt.Sprintf("proj-%d", time.Now().UnixMilli())
+	}
+	cleanID, err := storage.SanitizeID(importedTop.ID)
+	if err != nil {
+		importedTop.ID = fmt.Sprintf("proj-%d", time.Now().UnixMilli())
+	} else {
+		importedTop.ID = cleanID
+	}
+
+	if strings.TrimSpace(importedTop.Name) == "" {
+		importedTop.Name = "Imported Network Lab"
+	}
+
+	importedTop.SimulationStatus = "stopped"
+	for i := range importedTop.Nodes {
+		importedTop.Nodes[i].Status = "stopped"
+		importedTop.Nodes[i].Power = "off"
+	}
+
+	model.SanitizeTopologyNodeIDs(&importedTop)
+
+	if err := s.storage.SaveProject(&importedTop); err != nil {
+		logger.Log.Error("Failed to save imported project", "id", importedTop.ID, "error", err)
+		http.Error(w, fmt.Sprintf("Failed to save imported project: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	logger.Log.Info("Imported topology project successfully", "id", importedTop.ID, "name", importedTop.Name)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(importedTop)
 }
 
 type AddNodeRequest struct {

@@ -105,6 +105,16 @@ export async function cloneProject(id, newName) {
   return res.json();
 }
 
+export async function importProjectTopology(topologyData) {
+  const res = await fetch("/api/projects/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(topologyData),
+  });
+  if (!res.ok) await handleErrorResponse(res, "Failed to import project topology");
+  return res.json();
+}
+
 export async function deleteProject(id) {
   const res = await fetch(`/api/projects/${id}`, {
     method: "DELETE",
