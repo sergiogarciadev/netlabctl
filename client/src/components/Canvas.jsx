@@ -1799,6 +1799,26 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   });
 
   nodeGroup.getPortAbsPosition = (portId) => {
+    let portObj = portElementsMap.get(portId);
+    if (!portObj) {
+      const idx = nodePorts.findIndex((p) => p.id === portId || p.name === portId);
+      if (idx >= 0) {
+        const targetPort = nodePorts[idx];
+        portObj = portElementsMap.get(targetPort.id) || portElementsMap.get(targetPort.name);
+      }
+    }
+
+    if (portObj && typeof portObj.calcTransformMatrix === "function") {
+      const matrix = portObj.calcTransformMatrix();
+      if (matrix && matrix.length >= 6) {
+        const absX = matrix[4];
+        const absY = matrix[5];
+        if (!Number.isNaN(absX) && !Number.isNaN(absY) && absX !== 0 && absY !== 0) {
+          return { x: absX, y: absY };
+        }
+      }
+    }
+
     const scaleX = nodeGroup.scaleX || 1;
     const scaleY = nodeGroup.scaleY || 1;
     const groupWidth =
@@ -1810,43 +1830,9 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         ? nodeGroup.getScaledHeight()
         : (nodeGroup.height || 50) * scaleY;
 
-    const groupCenterX = nodeGroup.left + groupWidth / 2;
-    const groupCenterY = nodeGroup.top + groupHeight / 2;
-
-    let localPos = null;
-
-    if (portElementsMap.has(portId)) {
-      const portObj = portElementsMap.get(portId);
-      if (portObj && portObj.left !== undefined && portObj.top !== undefined) {
-        localPos = { x: portObj.left, y: portObj.top };
-      }
-    }
-
-    if (!localPos) {
-      const idx = nodePorts.findIndex((p) => p.id === portId || p.name === portId);
-      const targetPort = idx >= 0 ? nodePorts[idx] : null;
-      if (targetPort && portElementsMap.has(targetPort.id)) {
-        const portObj = portElementsMap.get(targetPort.id);
-        if (portObj && portObj.left !== undefined && portObj.top !== undefined) {
-          localPos = { x: portObj.left, y: portObj.top };
-        }
-      }
-    }
-
-    if (!localPos && nodeGroup.portRelativePositions.has(portId)) {
-      localPos = nodeGroup.portRelativePositions.get(portId);
-    }
-
-    if (localPos) {
-      return {
-        x: groupCenterX + localPos.x * scaleX,
-        y: groupCenterY + localPos.y * scaleY,
-      };
-    }
-
     return {
-      x: groupCenterX,
-      y: groupCenterY,
+      x: nodeGroup.left + groupWidth / 2,
+      y: nodeGroup.top + groupHeight / 2,
     };
   };
 
