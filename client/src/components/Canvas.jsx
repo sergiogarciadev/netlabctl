@@ -1575,6 +1575,92 @@ function preprocessSVGString(svgStr) {
 }
 
 const parsedSvgCache = new Map();
+const svgPortFractionsCache = new Map();
+
+function getSvgPortMap(svgString) {
+  if (!svgString || typeof DOMParser === "undefined") return new Map();
+  if (svgPortFractionsCache.has(svgString)) {
+    return svgPortFractionsCache.get(svgString);
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgString, "image/svg+xml");
+    const svgElem = doc.querySelector("svg");
+    if (!svgElem) return new Map();
+
+    let viewBoxWidth = 120;
+    let viewBoxHeight = 50;
+
+    const viewBox = svgElem.getAttribute("viewBox");
+    if (viewBox) {
+      const parts = viewBox
+        .trim()
+        .split(/[\s,]+/)
+        .map(Number);
+      if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+        viewBoxWidth = parts[2];
+        viewBoxHeight = parts[3];
+      }
+    } else {
+      viewBoxWidth = Number.parseFloat(svgElem.getAttribute("width")) || 120;
+      viewBoxHeight = Number.parseFloat(svgElem.getAttribute("height")) || 50;
+    }
+
+    const getCumulativeTransform = (elem) => {
+      let tx = 0;
+      let ty = 0;
+      let curr = elem;
+      while (curr && curr !== svgElem) {
+        const transform = curr.getAttribute("transform");
+        if (transform) {
+          const match = /translate\s*\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?\s*\)/.exec(transform);
+          if (match) {
+            tx += Number.parseFloat(match[1]) || 0;
+            ty += Number.parseFloat(match[2] || "0") || 0;
+          }
+        }
+        curr = curr.parentElement;
+      }
+      return { tx, ty };
+    };
+
+    const portMap = new Map();
+    const allElems = doc.querySelectorAll("[id]");
+    for (const elem of allElems) {
+      const id = elem.getAttribute("id");
+      if (
+        !id ||
+        id === "device-ports" ||
+        id === "ports" ||
+        id === "device-power" ||
+        id === "device-name"
+      ) {
+        continue;
+      }
+
+      const x = Number.parseFloat(elem.getAttribute("x") || "0");
+      const y = Number.parseFloat(elem.getAttribute("y") || "0");
+      const width = Number.parseFloat(elem.getAttribute("width") || "0");
+      const height = Number.parseFloat(elem.getAttribute("height") || "0");
+
+      const { tx, ty } = getCumulativeTransform(elem);
+      const centerX = tx + x + width / 2;
+      const centerY = ty + y + height / 2;
+
+      const fracX = Math.max(0.01, Math.min(0.99, centerX / viewBoxWidth));
+      const fracY = Math.max(0.01, Math.min(0.99, centerY / viewBoxHeight));
+
+      portMap.set(id, { fracX, fracY });
+    }
+
+    svgPortFractionsCache.set(svgString, portMap);
+    return portMap;
+  } catch (err) {
+    console.warn("[NETLAB-SVG-PORTMAP] Error building port map from SVG XML:", err);
+    return new Map();
+  }
+}
 
 async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) {
   const svgPortMap = getSvgPortMap(svgStr);
