@@ -87,6 +87,112 @@ Open `http://localhost:8080` in your web browser.
 
 ---
 
+## 📦 Creating Custom Device Templates
+
+`netlabctl` uses modular device templates stored in `$HOME/.netlabctl/devices/` with centralized QCOW2 disk images stored in `$HOME/.netlabctl/images/`.
+
+### 1. Converting Disk Images to QCOW2
+
+`netlabctl` requires QCOW2 format disk images. If your operating system disk image is in **RAW** (`.img` / `.raw`), **VMDK**, or **VDI** format, convert it using `qemu-img`:
+
+#### Convert RAW (`.raw` / `.img`) to QCOW2:
+```bash
+qemu-img convert -f raw -O qcow2 input-disk.raw ~/.netlabctl/images/my-custom-os.qcow2
+```
+
+#### Convert VMDK to QCOW2:
+```bash
+qemu-img convert -f vmdk -O qcow2 input-disk.vmdk ~/.netlabctl/images/my-custom-os.qcow2
+```
+
+#### Convert VDI (VirtualBox) to QCOW2:
+```bash
+qemu-img convert -f vdi -O qcow2 input-disk.vdi ~/.netlabctl/images/my-custom-os.qcow2
+```
+
+> [!TIP]
+> Always place your target `.qcow2` files directly inside `$HOME/.netlabctl/images/`.
+
+---
+
+### 2. Template Folder Structure
+
+Create a subdirectory under `$HOME/.netlabctl/devices/` for your custom template:
+
+```bash
+mkdir -p ~/.netlabctl/devices/my-custom-os
+```
+
+Each template folder requires two files:
+1. `machine.json`: Device specifications, RAM, vCPUs, QEMU binary, cloud-init defaults, and network interface definitions.
+2. `drawing.svg`: Vector graphic illustration representing the device front panel on the topology canvas.
+
+---
+
+### 3. Example `machine.json`
+
+Create `~/.netlabctl/devices/my-custom-os/machine.json`:
+
+```json
+{
+  "id": "my-custom-os",
+  "name": "My Custom Linux OS",
+  "description": "Custom Linux Appliance with 2 VirtIO network interfaces",
+  "group": "Linux",
+  "image": "my-custom-os.qcow2",
+  "drawing": "drawing.svg",
+  "system": "qemu-system-x86_64",
+  "memory": 512,
+  "smp": 2,
+  "userdata": "#cloud-config\nchpasswd:\n  list: |\n     root:insecure\n  expire: False",
+  "ports": [
+    {
+      "id": "device-port-1",
+      "name": "eth0",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-2",
+      "name": "eth1",
+      "device": "virtio-net-pci"
+    }
+  ],
+  "status": [
+    {
+      "id": "device-name",
+      "type": "name"
+    },
+    {
+      "id": "device-power",
+      "type": "power"
+    }
+  ]
+}
+```
+
+---
+
+### 4. Example `drawing.svg`
+
+Create `~/.netlabctl/devices/my-custom-os/drawing.svg`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60">
+  <rect x="0" y="0" width="200" height="60" fill="#1e293b" rx="6" stroke="#334155" stroke-width="2" />
+  <circle id="device-power" cx="15" cy="15" r="5" fill="#ef4444" />
+  <text id="device-name" x="30" y="20" fill="#f8fafc" font-family="sans-serif" font-size="12">My Custom OS</text>
+  <g class="device-ports">
+    <rect id="device-port-1" x="30" y="30" width="30" height="20" fill="#475569" stroke="#64748b" rx="2" />
+    <rect id="device-port-2" x="70" y="30" width="30" height="20" fill="#475569" stroke="#64748b" rx="2" />
+  </g>
+</svg>
+```
+
+Once saved, restart `netlabctl` or open the canvas—your new custom device template will immediately appear in the **Add Device** modal under its designated group tab!
+
+---
+
 ## 📄 License, Warranties & Forking
 
 This project is free and open-source software released under the **[MIT License](LICENSE)**.
