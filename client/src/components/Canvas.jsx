@@ -1577,6 +1577,7 @@ function preprocessSVGString(svgStr) {
 const parsedSvgCache = new Map();
 
 async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) {
+  const svgPortMap = getSvgPortMap(svgStr);
   let masterObjects = tmpl?.id ? parsedSvgCache.get(tmpl.id) : null;
 
   if (!masterObjects && svgStr) {
@@ -1829,6 +1830,8 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     }
   });
 
+  nodeGroup.svgPortMap = svgPortMap;
+
   nodeGroup.getPortAbsPosition = (portId) => {
     const scaleX = nodeGroup.scaleX || 1;
     const scaleY = nodeGroup.scaleY || 1;
@@ -1846,16 +1849,17 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     const topLeftX = nodeGroup.left - groupWidth / 2;
     const topLeftY = nodeGroup.top - groupHeight / 2;
 
-    let portFrac = svgPortMap.get(portId);
-    if (!portFrac) {
+    const activePortMap = nodeGroup.svgPortMap || svgPortMap;
+    let portFrac = activePortMap ? activePortMap.get(portId) : null;
+    if (!portFrac && activePortMap) {
       const idx = nodePorts.findIndex((p) => p.id === portId || p.name === portId);
       if (idx >= 0) {
         const targetPort = nodePorts[idx];
         portFrac =
-          svgPortMap.get(targetPort.id) ||
-          svgPortMap.get(targetPort.name) ||
-          svgPortMap.get(`device-port-${targetPort.id}`) ||
-          svgPortMap.get(`device-port-${idx + 1}`);
+          activePortMap.get(targetPort.id) ||
+          activePortMap.get(targetPort.name) ||
+          activePortMap.get(`device-port-${targetPort.id}`) ||
+          activePortMap.get(`device-port-${idx + 1}`);
       }
     }
 
