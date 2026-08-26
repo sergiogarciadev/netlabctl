@@ -89,9 +89,9 @@
       </g>
     </g>
   <text id="device-name" y="70" x="50%" text-anchor="middle" style="font-family:sans-serif; font-size:12px; fill:#000000">
-    Debian 1-port
+    Debian 2-port
   </text>
-  <g transform="translate(105 85)" class="device-ports">
+  <g transform="translate(80 85)" class="device-ports">
     <g class="device-port" transform="translate(0 0)">
       <rect
         id="device-port-1"
@@ -117,6 +117,33 @@
       />
       <text y="17" x="20" style="font-family:sans-serif; font-size:14px; text-anchor:middle; fill:#000000">
         1
+      </text>
+    </g>
+    <g class="device-port" transform="translate(50 0)">
+      <rect
+        id="device-port-2"
+        style="stroke:#777777;stroke-width:2"
+        height="32"
+        width="40"
+        y="0"
+        x="0"
+      />
+      <rect
+        style="stroke:#777777;stroke-width:2;fill:#ffff00"
+        height="8"
+        width="12"
+        y="24"
+        x="0"
+      />
+      <rect
+        style="stroke:#777777;stroke-width:2;fill:#88aa00"
+        height="8"
+        width="12"
+        y="24"
+        x="28"
+      />
+      <text y="17" x="20" style="font-family:sans-serif; font-size:14px; text-anchor:middle; fill:#000000">
+        2
       </text>
     </g>
   </g>

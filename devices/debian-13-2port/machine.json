@@ -1,0 +1,34 @@
+{
+  "id": "debian-13-2port",
+  "name": "Debian 13 (2 ports)",
+  "description": "Debian 13 with 2 ports",
+  "group": "Linux",
+  "image": "debian-13-generic-cloud-amd64.qcow2",
+  "drawing": "drawing.svg",
+  "system": "qemu-system-x86_64",
+  "memory": 256,
+  "smp": 2,
+  "userdata": "#cloud-config\nchpasswd:\n  list: |\n     root:insecure\n  expire: False",
+  "ports": [
+    {
+      "id": "device-port-1",
+      "name": "ens3",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-2",
+      "name": "ens3",
+      "device": "virtio-net-pci"
+    }
+  ],
+  "status": [
+    {
+      "id": "device-name",
+      "type": "name"
+    },
+    {
+      "id": "device-power",
+      "type": "power"
+    }
+  ]
+}
