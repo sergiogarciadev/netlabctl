@@ -74,17 +74,19 @@ func (m *Manager) PrepareNodeDisk(projectID string, node *model.Node, tmplDir st
 	diskPath := filepath.Join(nDir, "disk.qcow2")
 
 	backingFile := ""
-	if tmpl != nil && strings.TrimSpace(tmpl.Image) != "" {
-		imgName := strings.TrimSpace(tmpl.Image)
-		// 1. Check dedicated images directory (~/.netlabctl/images/<imageName>)
-		globalImage := filepath.Join(m.baseDir, "images", imgName)
-		if info, err := os.Stat(globalImage); err == nil && !info.IsDir() && info.Size() > 0 {
-			backingFile = globalImage
-		} else {
-			// 2. Fallback to template device directory (~/.netlabctl/devices/<tmpl>/<imageName>)
-			localImage := filepath.Join(tmplDir, imgName)
-			if info, err := os.Stat(localImage); err == nil && !info.IsDir() && info.Size() > 0 {
-				backingFile = localImage
+	if tmpl != nil {
+		cleanImg := tmpl.GetCleanImageFilename()
+		if cleanImg != "" {
+			// 1. Check dedicated images directory (~/.netlabctl/images/<cleanImg>)
+			globalImage := filepath.Join(m.baseDir, "images", cleanImg)
+			if info, err := os.Stat(globalImage); err == nil && !info.IsDir() && info.Size() > 0 {
+				backingFile = globalImage
+			} else {
+				// 2. Fallback to template device directory (~/.netlabctl/devices/<tmplDir>/<cleanImg>)
+				localImage := filepath.Join(tmplDir, cleanImg)
+				if info, err := os.Stat(localImage); err == nil && !info.IsDir() && info.Size() > 0 {
+					backingFile = localImage
+				}
 			}
 		}
 	}

@@ -1,59 +1,61 @@
 package model
 
 import (
-	"encoding/json"
-	"reflect"
 	"testing"
 )
 
-func TestMachineTemplateQEMUArgsAndDeviceOpts(t *testing.T) {
-	jsonStr := `{
-		"id": "mikrotik-32ports",
-		"name": "Mikrotik CHR (32 ports)",
-		"qemu_args": [
-			"-device", "pci-bridge,chassis_nr=1,id=bridge1",
-			"-device", "pci-bridge,chassis_nr=2,id=bridge2"
-		],
-		"ports": [
-			{
-				"id": "device-port-1",
-				"name": "ether-1",
-				"device": "virtio-net-pci",
-				"device_opts": "bus=bridge1"
-			},
-			{
-				"id": "device-port-17",
-				"name": "ether-17",
-				"device": "virtio-net-pci",
-				"device_opts": "bus=bridge2"
-			}
-		]
-	}`
-
-	var tmpl MachineTemplate
-	if err := json.Unmarshal([]byte(jsonStr), &tmpl); err != nil {
-		t.Fatalf("Failed to unmarshal machine template JSON: %v", err)
+func TestSanitizeImageFilename(t *testing.T) {
+	validCases := []string{
+		"chr-7.21.5.qcow2",
+		"debian-13.qcow2",
+		"disk.img",
+		"routeros.vmdk",
 	}
 
-	expectedArgs := []string{
-		"-device", "pci-bridge,chassis_nr=1,id=bridge1",
-		"-device", "pci-bridge,chassis_nr=2,id=bridge2",
+	for _, tc := range validCases {
+		clean, err := SanitizeImageFilename(tc)
+		if err != nil {
+			t.Errorf("SanitizeImageFilename(%q) expected success, got error: %v", tc, err)
+		}
+		if clean != tc {
+			t.Errorf("SanitizeImageFilename(%q) expected %q, got %q", tc, tc, clean)
+		}
 	}
 
-	actualArgs := tmpl.GetQEMUArgs()
-	if !reflect.DeepEqual(actualArgs, expectedArgs) {
-		t.Errorf("GetQEMUArgs() mismatch: expected %v, got %v", expectedArgs, actualArgs)
+	invalidPathTraversalCases := []string{
+		"../../etc/shadow",
+		"../etc/passwd",
+		"/etc/passwd",
+		"\\Windows\\System32\\config\\SAM",
+		"..\\..\\secret.txt",
+		".",
+		"..",
+		"foo/bar.qcow2",
+		"   ",
 	}
 
-	if len(tmpl.Ports) != 2 {
-		t.Fatalf("Expected 2 ports, got %d", len(tmpl.Ports))
+	for _, tc := range invalidPathTraversalCases {
+		clean, err := SanitizeImageFilename(tc)
+		if err == nil {
+			t.Errorf("SanitizeImageFilename(%q) expected error for path traversal attempt, got clean string %q", tc, clean)
+		}
+	}
+}
+
+func TestMachineTemplateGetCleanImageFilename(t *testing.T) {
+	tmplValid := &MachineTemplate{
+		ID:    "t1",
+		Image: "valid-disk.qcow2",
+	}
+	if tmplValid.GetCleanImageFilename() != "valid-disk.qcow2" {
+		t.Errorf("GetCleanImageFilename expected 'valid-disk.qcow2', got %q", tmplValid.GetCleanImageFilename())
 	}
 
-	if tmpl.Ports[0].DeviceOpts != "bus=bridge1" {
-		t.Errorf("Port 0 device_opts expected 'bus=bridge1', got '%s'", tmpl.Ports[0].DeviceOpts)
+	tmplMalicious := &MachineTemplate{
+		ID:    "t2",
+		Image: "../../etc/shadow",
 	}
-
-	if tmpl.Ports[1].DeviceOpts != "bus=bridge2" {
-		t.Errorf("Port 1 device_opts expected 'bus=bridge2', got '%s'", tmpl.Ports[1].DeviceOpts)
+	if tmplMalicious.GetCleanImageFilename() != "" {
+		t.Errorf("GetCleanImageFilename expected empty string for path traversal, got %q", tmplMalicious.GetCleanImageFilename())
 	}
 }

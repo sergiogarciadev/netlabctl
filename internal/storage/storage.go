@@ -174,22 +174,28 @@ func (s *Storage) ImagesDir() string {
 
 // CheckImageExists checks if the image specified in the template exists in ~/.netlabctl/images or device template folders.
 func (s *Storage) CheckImageExists(tmpl *model.MachineTemplate) bool {
-	if tmpl == nil || strings.TrimSpace(tmpl.Image) == "" {
+	if tmpl == nil {
 		return false
 	}
-	imageName := strings.TrimSpace(tmpl.Image)
+	cleanImg := tmpl.GetCleanImageFilename()
+	if cleanImg == "" {
+		return false
+	}
 
-	// 1. Check dedicated images directory (~/.netlabctl/images/<imageName>)
-	imgPath := filepath.Join(s.ImagesDir(), imageName)
+	// 1. Check dedicated images directory (~/.netlabctl/images/<cleanImg>)
+	imgPath := filepath.Join(s.ImagesDir(), cleanImg)
 	if info, err := os.Stat(imgPath); err == nil && !info.IsDir() && info.Size() > 0 {
 		return true
 	}
 
-	// 2. Check template device directory (~/.netlabctl/devices/<tmpl.ID>/<imageName>)
+	// 2. Check template device directory (~/.netlabctl/devices/<cleanID>/<cleanImg>)
 	if tmpl.ID != "" {
-		deviceImgPath := filepath.Join(s.DevicesDir(), tmpl.ID, imageName)
-		if info, err := os.Stat(deviceImgPath); err == nil && !info.IsDir() && info.Size() > 0 {
-			return true
+		cleanID, err := model.SanitizeImageFilename(tmpl.ID)
+		if err == nil && cleanID != "" {
+			deviceImgPath := filepath.Join(s.DevicesDir(), cleanID, cleanImg)
+			if info, err := os.Stat(deviceImgPath); err == nil && !info.IsDir() && info.Size() > 0 {
+				return true
+			}
 		}
 	}
 
@@ -198,7 +204,7 @@ func (s *Storage) CheckImageExists(tmpl *model.MachineTemplate) bool {
 	if err == nil {
 		for _, entry := range entries {
 			if entry.IsDir() {
-				p := filepath.Join(s.DevicesDir(), entry.Name(), imageName)
+				p := filepath.Join(s.DevicesDir(), entry.Name(), cleanImg)
 				if info, err := os.Stat(p); err == nil && !info.IsDir() && info.Size() > 0 {
 					return true
 				}
@@ -218,9 +224,9 @@ type ImageFileInfo struct {
 
 // SaveImage writes a disk image file into s.ImagesDir() ($HOME/.netlabctl/images).
 func (s *Storage) SaveImage(filename string, r io.Reader) error {
-	cleanName := filepath.Base(filename)
-	if cleanName == "" || cleanName == "." || cleanName == ".." || cleanName == "/" {
-		return fmt.Errorf("invalid filename: %q", filename)
+	cleanName, err := model.SanitizeImageFilename(filename)
+	if err != nil {
+		return fmt.Errorf("invalid filename: %w", err)
 	}
 	dstPath := filepath.Join(s.ImagesDir(), cleanName)
 	out, err := os.Create(dstPath)

@@ -44,3 +44,28 @@ func TestPrepareNodeDiskFailsWithoutBackingImage(t *testing.T) {
 		t.Fatalf("PrepareNodeDisk expected error when disk image file is missing on disk, got nil")
 	}
 }
+
+func TestPrepareNodeDiskRejectsPathTraversal(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "netlabctl_qemu_traversal_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	mgr := NewManager(tempDir)
+	node := &model.Node{
+		ID:         "node-malicious",
+		TemplateID: "malicious-tmpl",
+	}
+
+	tmplMalicious := &model.MachineTemplate{
+		ID:    "malicious-tmpl",
+		Name:  "Malicious Path Traversal Template",
+		Image: "../../etc/shadow",
+	}
+
+	_, err = mgr.PrepareNodeDisk("proj-1", node, filepath.Join(tempDir, "devices", "malicious-tmpl"), tmplMalicious)
+	if err == nil {
+		t.Fatalf("PrepareNodeDisk expected failure for path traversal image filename, got nil")
+	}
+}

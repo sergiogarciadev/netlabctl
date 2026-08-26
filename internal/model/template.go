@@ -2,6 +2,8 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -80,4 +82,30 @@ func (m *MachineTemplate) GetQEMUArgs() []string {
 		return strings.Fields(str)
 	}
 	return nil
+}
+
+// SanitizeImageFilename validates and sanitizes a disk image filename.
+// Returns an error if the filename contains directory traversal elements (e.g. "..", "/", "\\").
+func SanitizeImageFilename(filename string) (string, error) {
+	trimmed := strings.TrimSpace(filename)
+	if trimmed == "" {
+		return "", fmt.Errorf("empty image filename")
+	}
+	clean := filepath.Base(trimmed)
+	if clean == "." || clean == ".." || clean != trimmed || strings.ContainsAny(trimmed, "/\\") {
+		return "", fmt.Errorf("invalid image filename %q: path traversal elements are not allowed", filename)
+	}
+	return clean, nil
+}
+
+// GetCleanImageFilename returns the sanitized image filename if valid, or empty string if invalid or containing path traversal.
+func (m *MachineTemplate) GetCleanImageFilename() string {
+	if m == nil || strings.TrimSpace(m.Image) == "" {
+		return ""
+	}
+	clean, err := SanitizeImageFilename(m.Image)
+	if err != nil {
+		return ""
+	}
+	return clean
 }
