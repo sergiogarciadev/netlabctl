@@ -899,6 +899,36 @@ export function Canvas({
       }
     });
 
+    canvas.on("object:modified", (opt) => {
+      const target = opt.target;
+      if (target?.isNodeGroup && target.nodeData) {
+        const finalLeft = Math.round(target.left);
+        const finalTop = Math.round(target.top);
+        if (target.nodeData.x !== finalLeft || target.nodeData.y !== finalTop) {
+          target.nodeData.x = finalLeft;
+          target.nodeData.y = finalTop;
+          if (onUpdateNodeRef.current) {
+            onUpdateNodeRef.current({ ...target.nodeData, x: finalLeft, y: finalTop });
+          }
+        }
+      }
+    });
+
+    canvas.on("mouse:up", (opt) => {
+      const target = opt.target || canvas.getActiveObject();
+      if (target?.isNodeGroup && target.nodeData) {
+        const finalLeft = Math.round(target.left);
+        const finalTop = Math.round(target.top);
+        if (target.nodeData.x !== finalLeft || target.nodeData.y !== finalTop) {
+          target.nodeData.x = finalLeft;
+          target.nodeData.y = finalTop;
+          if (onUpdateNodeRef.current) {
+            onUpdateNodeRef.current({ ...target.nodeData, x: finalLeft, y: finalTop });
+          }
+        }
+      }
+    });
+
     canvas.on("mouse:dblclick", (opt) => {
       const target = opt.target;
       if (target?.isNodeGroup && target.nodeData) {
