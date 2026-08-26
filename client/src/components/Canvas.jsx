@@ -529,7 +529,7 @@ export function Canvas({
       let nodeId = null;
       let subTargetTag = null;
 
-      if (target?.isNodeGroup) {
+      if (target?.isNodeGroup && target.nodeData) {
         nodeId = target.nodeData.id;
         subTargetTag = subTarget?.id || subTarget?.portId || subTarget?.type;
         if (subTarget?.portId) {
@@ -543,7 +543,7 @@ export function Canvas({
         }
       } else {
         for (const obj of canvas.getObjects()) {
-          if (obj.isNodeGroup) {
+          if (obj.isNodeGroup && obj.nodeData) {
             const near = findClosestPortInNode(obj, pointer.x, pointer.y, 45);
             if (near && (!nearestPort || near.dist < nearestPort.dist)) {
               nearestPort = near;
