@@ -191,6 +191,9 @@ func (h *NodeSerialHub) runLoop(stopChan chan struct{}) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
+	firstAttempt := true
+	lastErrLogTime := time.Time{}
+
 	for {
 		select {
 		case <-stopChan:
@@ -204,6 +207,11 @@ func (h *NodeSerialHub) runLoop(stopChan chan struct{}) {
 
 		sock, err := net.Dial("unix", sockPath)
 		if err != nil {
+			if firstAttempt || time.Since(lastErrLogTime) > 5*time.Second {
+				logger.Log.Warn("SerialHub unable to connect to node serial socket, retrying...", "nodeID", h.nodeID, "sockPath", sockPath, "error", err)
+				lastErrLogTime = time.Now()
+				firstAttempt = false
+			}
 			select {
 			case <-stopChan:
 				return
@@ -216,7 +224,9 @@ func (h *NodeSerialHub) runLoop(stopChan chan struct{}) {
 		h.activeSock = sock
 		h.mu.Unlock()
 
-		logger.Log.Debug("SerialHub connected to UNIX socket", "nodeID", h.nodeID, "sockPath", sockPath)
+		logger.Log.Info("SerialHub connected to QEMU UNIX socket", "nodeID", h.nodeID, "sockPath", sockPath)
+		h.Broadcast([]byte("\r\n\x1b[1;32m=== QEMU Serial Console Connected ===\x1b[0m\r\n\r\n"))
+		firstAttempt = true
 
 		buf := make([]byte, 1024)
 		for {
@@ -235,6 +245,7 @@ func (h *NodeSerialHub) runLoop(stopChan chan struct{}) {
 				h.Broadcast(buf[:n])
 			}
 			if err != nil {
+				logger.Log.Warn("SerialHub lost connection to QEMU UNIX socket", "nodeID", h.nodeID, "error", err)
 				_ = sock.Close()
 				h.mu.Lock()
 				h.activeSock = nil

@@ -237,16 +237,18 @@ export function TerminalWindow({
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${protocol}//${host}/api/v1/projects/${projectId || "default"}/nodes/${nodeId}/terminal`;
 
+      console.log(`[TERMINAL] Connecting to WS: ${wsUrl}`);
       try {
         socket = new WebSocket(wsUrl);
         socket.binaryType = "arraybuffer";
       } catch (err) {
-        console.warn("[TERMINAL] Failed to create WebSocket:", err);
+        console.error(`[TERMINAL] Failed to create WebSocket for node ${nodeId}:`, err);
         return;
       }
 
       socket.onopen = () => {
         if (isDisposed) return;
+        console.log(`[TERMINAL] WS connection established for node ${nodeId}`);
         term.write("\r\n\x1b[32mConnected to serial console.\x1b[0m\r\n");
         setTermDimensions({ rows: term.rows, cols: term.cols });
         sendSizeReport(term.rows, term.cols);
@@ -278,7 +280,10 @@ export function TerminalWindow({
         }
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
+        console.log(
+          `[TERMINAL] WS closed for node ${nodeId}. Code: ${event?.code}, Reason: ${event?.reason || "none"}`,
+        );
         socket = null;
         if (!isDisposed) {
           if (isNodeRunningRef.current) {
@@ -291,7 +296,8 @@ export function TerminalWindow({
         }
       };
 
-      socket.onerror = () => {
+      socket.onerror = (event) => {
+        console.warn(`[TERMINAL] WS error for node ${nodeId}:`, event);
         if (!isDisposed && socket) {
           try {
             socket.close();

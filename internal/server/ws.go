@@ -727,18 +727,29 @@ func (s *Server) handleNodeTerminal(w http.ResponseWriter, r *http.Request) {
 		projectID = "default"
 	}
 
+	logger.Log.Info("Terminal WebSocket connection requested", "projectID", projectID, "nodeID", nodeID, "remoteAddr", r.RemoteAddr)
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Log.Error("Terminal WebSocket upgrade failed", "error", err)
+		logger.Log.Error("Terminal WebSocket upgrade failed", "nodeID", nodeID, "error", err)
 		return
 	}
 	defer conn.Close()
 
 	serialSock := s.qemuMgr.GetSerialSocketPath(projectID, nodeID)
+	if _, err := os.Stat(serialSock); err != nil {
+		logger.Log.Warn("Terminal connected but node serial socket does not exist yet", "nodeID", nodeID, "serialSock", serialSock)
+	}
+
 	hub := s.serialHubs.GetHub(projectID, nodeID, serialSock)
 
 	client := hub.Subscribe(conn)
-	defer hub.Unsubscribe(client)
+	logger.Log.Info("Terminal WebSocket client subscribed", "projectID", projectID, "nodeID", nodeID)
+
+	defer func() {
+		hub.Unsubscribe(client)
+		logger.Log.Info("Terminal WebSocket client unsubscribed", "projectID", projectID, "nodeID", nodeID)
+	}()
 
 	for {
 		_, msg, err := conn.ReadMessage()
