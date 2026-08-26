@@ -1700,6 +1700,26 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   if (!masterObjects && svgStr) {
     try {
       const processedStr = preprocessSVGString(svgStr);
+      // Extract viewBox width from SVG XML string for percentage x text position calculations
+      let viewBoxWidth = 120;
+      try {
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(processedStr, "image/svg+xml");
+        const svgElem = svgDoc.querySelector("svg");
+        const viewBoxAttr = svgElem ? svgElem.getAttribute("viewBox") : null;
+        if (viewBoxAttr) {
+          const parts = viewBoxAttr
+            .trim()
+            .split(/[\s,]+/)
+            .map(Number);
+          if (parts.length === 4 && parts[2] > 0) {
+            viewBoxWidth = parts[2];
+          }
+        }
+      } catch (err) {
+        // Fallback viewBoxWidth = 120
+      }
+
       const parsed = await loadSVGFromString(processedStr, (docElem, fabricObj) => {
         if (docElem && typeof docElem.getAttribute === "function" && fabricObj) {
           const id = docElem.getAttribute("id");
@@ -1713,21 +1733,40 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
             fabricObj.class = className;
           }
 
-          // Restore SVG XML x & y attributes for text elements in Fabric v7
+          // Restore SVG XML text-anchor alignment and x/y positioning in Fabric v7
           const tag = docElem.tagName ? docElem.tagName.toLowerCase() : "";
           if (tag === "text" || fabricObj.type === "text" || fabricObj.type === "i-text") {
+            const textAnchor =
+              docElem.getAttribute("text-anchor") || docElem.style?.textAnchor || "start";
+
+            if (textAnchor === "middle") {
+              fabricObj.set({ originX: "center", textAlign: "center" });
+            } else if (textAnchor === "end") {
+              fabricObj.set({ originX: "right", textAlign: "right" });
+            } else {
+              fabricObj.set({ originX: "left", textAlign: "left" });
+            }
+
             const attrX = docElem.getAttribute("x");
             const attrY = docElem.getAttribute("y");
-            if (attrX && !attrX.includes("%")) {
-              const valX = Number.parseFloat(attrX);
-              if (!Number.isNaN(valX)) {
-                fabricObj.set({ left: valX });
+
+            if (attrX) {
+              let posX = 0;
+              if (attrX.endsWith("%")) {
+                const pct = Number.parseFloat(attrX) || 50;
+                posX = (viewBoxWidth * pct) / 100;
+              } else {
+                posX = Number.parseFloat(attrX) || 0;
+              }
+              if (!Number.isNaN(posX)) {
+                fabricObj.set({ left: posX });
               }
             }
-            if (attrY && !attrY.includes("%")) {
-              const valY = Number.parseFloat(attrY);
-              if (!Number.isNaN(valY)) {
-                fabricObj.set({ top: valY });
+
+            if (attrY && !attrY.endsWith("%")) {
+              const posY = Number.parseFloat(attrY);
+              if (!Number.isNaN(posY)) {
+                fabricObj.set({ top: posY });
               }
             }
           }
