@@ -34,6 +34,7 @@ func (s *StatusTemplate) GetStatusType() string {
 type MachineTemplate struct {
 	ID          string           `json:"id"`
 	Name        string           `json:"name"`
+	Group       string           `json:"group,omitempty"`
 	Description string           `json:"description"`
 	Drawing     string           `json:"drawing"`
 	System      string           `json:"system,omitempty"`
