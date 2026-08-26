@@ -1319,6 +1319,41 @@ function getStylePropValue(elem, propName) {
   return match ? match[1].trim() : null;
 }
 
+function estimateTextWidth(text, fontSize, fontWeight) {
+  if (!text) return 0;
+  let widthFactor = 0.56;
+  if (
+    fontWeight === "bold" ||
+    fontWeight === "700" ||
+    fontWeight === "800" ||
+    fontWeight === "900"
+  ) {
+    widthFactor = 0.62;
+  }
+  let totalWidth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (
+      char === "i" ||
+      char === "l" ||
+      char === "j" ||
+      char === "t" ||
+      char === "f" ||
+      char === "I" ||
+      char === " "
+    ) {
+      totalWidth += fontSize * widthFactor * 0.5;
+    } else if (char === "w" || char === "m" || char === "W" || char === "M") {
+      totalWidth += fontSize * widthFactor * 1.4;
+    } else if (char === char.toUpperCase() && char !== char.toLowerCase()) {
+      totalWidth += fontSize * widthFactor * 1.15;
+    } else {
+      totalWidth += fontSize * widthFactor;
+    }
+  }
+  return totalWidth;
+}
+
 function preprocessSVGString(svgStr) {
   if (!svgStr || typeof DOMParser === "undefined") return svgStr;
 
@@ -1377,66 +1412,106 @@ function preprocessSVGString(svgStr) {
       }
     }
 
-    // 2. Resolve inherited styles and text alignment on <text> and <tspan> elements
+    // 2. Expand <text> elements containing <tspan> children into <g> groups of distinct <text> nodes
     const textElems = Array.from(doc.querySelectorAll("text"));
     for (const textNode of textElems) {
-      const getProp = (node, prop) => node.getAttribute(prop) || getStylePropValue(node, prop);
+      const getProp = (node, prop) =>
+        node ? node.getAttribute(prop) || getStylePropValue(node, prop) : null;
 
-      const textAnchor = getProp(textNode, "text-anchor");
-      const dominantBaseline =
-        getProp(textNode, "dominant-baseline") || getProp(textNode, "alignment-baseline");
-      const fontFamily = getProp(textNode, "font-family");
-      const fontSize = getProp(textNode, "font-size");
-      const fontWeight = getProp(textNode, "font-weight");
-      const fontStyle = getProp(textNode, "font-style");
-      const fill = getProp(textNode, "fill");
-
-      if (textAnchor) textNode.setAttribute("text-anchor", textAnchor);
-      if (dominantBaseline) textNode.setAttribute("dominant-baseline", dominantBaseline);
-      if (fontFamily) textNode.setAttribute("font-family", fontFamily);
-      if (fontSize) textNode.setAttribute("font-size", fontSize);
-      if (fontWeight) textNode.setAttribute("font-weight", fontWeight);
-      if (fontStyle) textNode.setAttribute("font-style", fontStyle);
-      if (fill) textNode.setAttribute("fill", fill);
-
-      const processTSpan = (tspanNode, parentProps) => {
-        const tAnchor = getProp(tspanNode, "text-anchor") || parentProps.textAnchor;
-        const fFamily = getProp(tspanNode, "font-family") || parentProps.fontFamily;
-        const fSize = getProp(tspanNode, "font-size") || parentProps.fontSize;
-        const fWeight = getProp(tspanNode, "font-weight") || parentProps.fontWeight;
-        const fStyle = getProp(tspanNode, "font-style") || parentProps.fontStyle;
-        const fFill = getProp(tspanNode, "fill") || parentProps.fill;
-
-        if (tAnchor) tspanNode.setAttribute("text-anchor", tAnchor);
-        if (fFamily) tspanNode.setAttribute("font-family", fFamily);
-        if (fSize) tspanNode.setAttribute("font-size", fSize);
-        if (fWeight) tspanNode.setAttribute("font-weight", fWeight);
-        if (fStyle) tspanNode.setAttribute("font-style", fStyle);
-        if (fFill) tspanNode.setAttribute("fill", fFill);
-
-        const currentProps = {
-          textAnchor: tAnchor,
-          fontFamily: fFamily,
-          fontSize: fSize,
-          fontWeight: fWeight,
-          fontStyle: fStyle,
-          fill: fFill,
-        };
-
-        const children = Array.from(tspanNode.children);
-        for (const child of children) {
-          if (child.tagName && child.tagName.toLowerCase() === "tspan") {
-            processTSpan(child, currentProps);
-          }
-        }
+      const topProps = {
+        fontFamily: getProp(textNode, "font-family") || "sans-serif",
+        fontSize: Number.parseFloat(getProp(textNode, "font-size") || "12"),
+        fontWeight: getProp(textNode, "font-weight") || "normal",
+        fontStyle: getProp(textNode, "font-style") || "normal",
+        fill: getProp(textNode, "fill") || "#000000",
+        textAnchor: getProp(textNode, "text-anchor") || "start",
+        dominantBaseline:
+          getProp(textNode, "dominant-baseline") ||
+          getProp(textNode, "alignment-baseline") ||
+          "auto",
       };
 
-      const topProps = { textAnchor, fontFamily, fontSize, fontWeight, fontStyle, fill };
-      const directTSpans = Array.from(textNode.children).filter(
-        (child) => child.tagName && child.tagName.toLowerCase() === "tspan",
-      );
-      for (const tspan of directTSpans) {
-        processTSpan(tspan, topProps);
+      const hasTSpan = textNode.querySelector("tspan") !== null;
+      if (!hasTSpan) {
+        if (topProps.textAnchor) textNode.setAttribute("text-anchor", topProps.textAnchor);
+        if (topProps.dominantBaseline)
+          textNode.setAttribute("dominant-baseline", topProps.dominantBaseline);
+        if (topProps.fontFamily) textNode.setAttribute("font-family", topProps.fontFamily);
+        if (topProps.fontSize) textNode.setAttribute("font-size", `${topProps.fontSize}px`);
+        if (topProps.fontWeight) textNode.setAttribute("font-weight", topProps.fontWeight);
+        if (topProps.fontStyle) textNode.setAttribute("font-style", topProps.fontStyle);
+        if (topProps.fill) textNode.setAttribute("fill", topProps.fill);
+        continue;
+      }
+
+      const extractTextRuns = (node, parentProps) => {
+        const currentProps = {
+          fontFamily: getProp(node, "font-family") || parentProps.fontFamily,
+          fontSize: Number.parseFloat(getProp(node, "font-size") || parentProps.fontSize),
+          fontWeight: getProp(node, "font-weight") || parentProps.fontWeight,
+          fontStyle: getProp(node, "font-style") || parentProps.fontStyle,
+          fill: getProp(node, "fill") || parentProps.fill,
+          textAnchor: getProp(node, "text-anchor") || parentProps.textAnchor,
+          dominantBaseline:
+            getProp(node, "dominant-baseline") ||
+            getProp(node, "alignment-baseline") ||
+            parentProps.dominantBaseline,
+        };
+
+        let runs = [];
+        for (const child of Array.from(node.childNodes)) {
+          if (child.nodeType === 3) {
+            const txt = child.nodeValue;
+            if (txt && txt.trim() !== "") {
+              runs.push({ text: txt, props: { ...currentProps } });
+            }
+          } else if (
+            child.nodeType === 1 &&
+            child.tagName &&
+            child.tagName.toLowerCase() === "tspan"
+          ) {
+            runs = runs.concat(extractTextRuns(child, currentProps));
+          }
+        }
+        return runs;
+      };
+
+      const runs = extractTextRuns(textNode, topProps);
+      if (runs.length === 0) continue;
+
+      const groupNode = doc.createElementNS("http://www.w3.org/2000/svg", "g");
+      if (textNode.id) groupNode.id = textNode.id;
+      if (textNode.getAttribute("class"))
+        groupNode.setAttribute("class", textNode.getAttribute("class"));
+      if (textNode.getAttribute("transform"))
+        groupNode.setAttribute("transform", textNode.getAttribute("transform"));
+      if (textNode.getAttribute("style"))
+        groupNode.setAttribute("style", textNode.getAttribute("style"));
+
+      let startX = Number.parseFloat(textNode.getAttribute("x") || "0");
+      const startY = textNode.getAttribute("y") || "0";
+
+      for (const run of runs) {
+        const subText = doc.createElementNS("http://www.w3.org/2000/svg", "text");
+        subText.setAttribute("x", startX.toString());
+        subText.setAttribute("y", startY);
+        subText.setAttribute("font-family", run.props.fontFamily);
+        subText.setAttribute("font-size", `${run.props.fontSize}px`);
+        subText.setAttribute("font-style", run.props.fontStyle);
+        subText.setAttribute("font-weight", run.props.fontWeight);
+        subText.setAttribute("fill", run.props.fill);
+        if (run.props.textAnchor) subText.setAttribute("text-anchor", run.props.textAnchor);
+        if (run.props.dominantBaseline)
+          subText.setAttribute("dominant-baseline", run.props.dominantBaseline);
+
+        subText.textContent = run.text;
+        groupNode.appendChild(subText);
+
+        startX += estimateTextWidth(run.text, run.props.fontSize, run.props.fontWeight);
+      }
+
+      if (textNode.parentNode) {
+        textNode.parentNode.replaceChild(groupNode, textNode);
       }
     }
 
