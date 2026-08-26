@@ -1,12 +1,18 @@
 package model
 
+import (
+	"encoding/json"
+	"strings"
+)
+
 // PortTemplate defines a network interface port in a machine template.
 type PortTemplate struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Type   string `json:"type"` // "managed", "ethernet", "user", "tap", etc.
-	Netdev string `json:"netdev,omitempty"`
-	Device string `json:"device,omitempty"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Type       string `json:"type"` // "managed", "ethernet", "user", "tap", etc.
+	Netdev     string `json:"netdev,omitempty"`
+	Device     string `json:"device,omitempty"`
+	DeviceOpts string `json:"device_opts,omitempty"`
 }
 
 // StatusTemplate defines an SVG element indicator for machine status.
@@ -41,6 +47,7 @@ type MachineTemplate struct {
 	Ports       []PortTemplate   `json:"ports"`
 	Status      []StatusTemplate `json:"status"`
 	Qemu        []string         `json:"qemu,omitempty"`
+	QEMUArgs    json.RawMessage  `json:"qemu_args,omitempty"`
 }
 
 // GetSMP returns SMP cores count (or Cores fallback).
@@ -52,4 +59,23 @@ func (m *MachineTemplate) GetSMP() int {
 		return m.Cores
 	}
 	return 1
+}
+
+// GetQEMUArgs returns normalized custom extra QEMU command line arguments.
+func (m *MachineTemplate) GetQEMUArgs() []string {
+	if len(m.Qemu) > 0 {
+		return m.Qemu
+	}
+	if len(m.QEMUArgs) == 0 {
+		return nil
+	}
+	var arr []string
+	if err := json.Unmarshal(m.QEMUArgs, &arr); err == nil {
+		return arr
+	}
+	var str string
+	if err := json.Unmarshal(m.QEMUArgs, &str); err == nil && str != "" {
+		return strings.Fields(str)
+	}
+	return nil
 }

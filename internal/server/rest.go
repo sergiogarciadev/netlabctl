@@ -392,6 +392,7 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 			MAC:          macs[i],
 			Type:         portType,
 			NetdevDriver: driver,
+			DeviceOpts:   pt.DeviceOpts,
 		})
 	}
 

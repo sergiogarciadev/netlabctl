@@ -223,6 +223,16 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 			devDriver = "virtio-net-pci"
 		}
 
+		devOpts := port.DeviceOpts
+		if devOpts == "" && tmpl != nil && i < len(tmpl.Ports) {
+			devOpts = tmpl.Ports[i].DeviceOpts
+		}
+
+		devArg := fmt.Sprintf("%s,netdev=%s,mac=%s,id=%s", devDriver, netdevID, port.MAC, devID)
+		if devOpts != "" {
+			devArg += fmt.Sprintf(",%s", devOpts)
+		}
+
 		pType := port.Type
 		if pType == "" {
 			pType = "managed"
@@ -236,7 +246,7 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 			}
 			args = append(args,
 				"-netdev", netdevArg,
-				"-device", fmt.Sprintf("%s,netdev=%s,mac=%s,id=%s", devDriver, netdevID, port.MAC, devID),
+				"-device", devArg,
 			)
 
 		case "bridge":
@@ -246,7 +256,7 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 			}
 			args = append(args,
 				"-netdev", fmt.Sprintf("bridge,id=%s,br=%s", netdevID, brIf),
-				"-device", fmt.Sprintf("%s,netdev=%s,mac=%s,id=%s", devDriver, netdevID, port.MAC, devID),
+				"-device", devArg,
 			)
 
 		case "tap":
@@ -256,7 +266,7 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 			}
 			args = append(args,
 				"-netdev", tapArg,
-				"-device", fmt.Sprintf("%s,netdev=%s,mac=%s,id=%s", devDriver, netdevID, port.MAC, devID),
+				"-device", devArg,
 			)
 
 		default: // "managed"
@@ -265,14 +275,17 @@ func (m *Manager) StartNode(projectID string, node *model.Node, tmplDir string, 
 			if ok && targetAddr != "" {
 				args = append(args,
 					"-netdev", fmt.Sprintf("socket,id=%s,connect=%s", netdevID, targetAddr),
-					"-device", fmt.Sprintf("%s,netdev=%s,mac=%s,id=%s", devDriver, netdevID, port.MAC, devID),
+					"-device", devArg,
 				)
 			}
 		}
 	}
 
-	if tmpl != nil && len(tmpl.Qemu) > 0 {
-		args = append(args, tmpl.Qemu...)
+	if tmpl != nil {
+		qemuExtra := tmpl.GetQEMUArgs()
+		if len(qemuExtra) > 0 {
+			args = append(args, qemuExtra...)
+		}
 	}
 
 	logger.Log.Info("Executing QEMU command", "nodeID", node.ID, "binary", qemuPath, "args", args)
