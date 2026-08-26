@@ -374,8 +374,24 @@ func (m *Manager) ResetNode(projectID, nodeID string) error {
 	return m.SendMonitorCommand(projectID, nodeID, "system_reset")
 }
 
+// PortLinkState holds port device ID and desired link state.
+type PortLinkState struct {
+	DeviceID string
+	LinkOn   bool
+}
+
 // SetPortLinkStatus connects to the node's QEMU monitor socket and sets link status on/off.
 func (m *Manager) SetPortLinkStatus(projectID, nodeID, deviceID string, linkOn bool) error {
+	return m.SetNodePortsLinkStatus(projectID, nodeID, []PortLinkState{
+		{DeviceID: deviceID, LinkOn: linkOn},
+	})
+}
+
+// SetNodePortsLinkStatus updates link states for multiple ports on a node over a single monitor socket connection.
+func (m *Manager) SetNodePortsLinkStatus(projectID, nodeID string, portStates []PortLinkState) error {
+	if len(portStates) == 0 {
+		return nil
+	}
 	if !m.IsNodeRunning(nodeID) {
 		return nil
 	}
@@ -389,24 +405,33 @@ func (m *Manager) SetPortLinkStatus(projectID, nodeID, deviceID string, linkOn b
 		return nil
 	}
 
-	conn, err := net.DialTimeout("unix", monitorSock, 500*time.Millisecond)
+	conn, err := net.DialTimeout("unix", monitorSock, 1*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to dial QEMU monitor socket for node %s: %w", nodeID, err)
 	}
 	defer conn.Close()
 
-	stateStr := "off"
-	if linkOn {
-		stateStr = "on"
+	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+
+	var buf strings.Builder
+	for _, ps := range portStates {
+		stateStr := "off"
+		if ps.LinkOn {
+			stateStr = "on"
+		}
+		buf.WriteString(fmt.Sprintf("set_link %s %s\n", ps.DeviceID, stateStr))
 	}
 
-	cmdStr := fmt.Sprintf("set_link %s %s\n", deviceID, stateStr)
-	_, err = conn.Write([]byte(cmdStr))
+	_, err = conn.Write([]byte(buf.String()))
 	if err != nil {
-		return fmt.Errorf("failed to send set_link to monitor for %s: %w", deviceID, err)
+		return fmt.Errorf("failed to send set_link batch to monitor for node %s: %w", nodeID, err)
 	}
 
-	logger.Log.Info("Updated QEMU monitor link status", "nodeID", nodeID, "deviceID", deviceID, "linkOn", linkOn)
+	// Read response from QEMU monitor to ensure commands are processed before closing
+	readBuf := make([]byte, 4096)
+	_, _ = conn.Read(readBuf)
+
+	logger.Log.Info("Updated QEMU monitor link statuses", "nodeID", nodeID, "count", len(portStates))
 	return nil
 }
 

@@ -644,6 +644,7 @@ func (h *WSHub) SyncTopologyNetworkAndMonitors(top *model.Topology) {
 		wg.Add(1)
 		go func(n model.Node) {
 			defer wg.Done()
+			var portStates []qemu.PortLinkState
 			for i, port := range n.Ports {
 				devID := fmt.Sprintf("eth%d", i)
 				portKey := fmt.Sprintf("%s:%s", n.ID, port.ID)
@@ -660,8 +661,12 @@ func (h *WSHub) SyncTopologyNetworkAndMonitors(top *model.Topology) {
 					linkOn = connectedPorts[portKey]
 				}
 
-				_ = h.qemuMgr.SetPortLinkStatus(top.ID, n.ID, devID, linkOn)
+				portStates = append(portStates, qemu.PortLinkState{
+					DeviceID: devID,
+					LinkOn:   linkOn,
+				})
 			}
+			_ = h.qemuMgr.SetNodePortsLinkStatus(top.ID, n.ID, portStates)
 		}(node)
 	}
 	wg.Wait()
