@@ -498,12 +498,68 @@ export function App() {
     async (tmpl) => {
       try {
         const proj = projectRef.current;
-        const count = proj.nodes?.length || 0;
-        const posX = 100 + (count % 3) * 240;
-        const posY = 120 + Math.floor(count / 3) * 200;
+        const existingNodes = proj.nodes || [];
+
+        // Find a free, non-overlapping location on the canvas grid
+        const startX = 100;
+        const startY = 120;
+        const stepX = 240;
+        const stepY = 180;
+        const maxCols = 4;
+        const nodeWidth = 180;
+        const nodeHeight = 90;
+        const margin = 35;
+
+        const isOverlapping = (x, y) => {
+          const candLeft = x - margin;
+          const candTop = y - margin;
+          const candRight = x + nodeWidth + margin;
+          const candBottom = y + nodeHeight + margin;
+
+          for (const node of existingNodes) {
+            const nx = node.x || 0;
+            const ny = node.y || 0;
+            const nRight = nx + nodeWidth;
+            const nBottom = ny + nodeHeight;
+
+            const overlaps = !(
+              candRight <= nx ||
+              candLeft >= nRight ||
+              candBottom <= ny ||
+              candTop >= nBottom
+            );
+            if (overlaps) return true;
+          }
+          return false;
+        };
+
+        let posX = startX;
+        let posY = startY;
+        let foundFree = false;
+
+        for (let r = 0; r < 50; r++) {
+          for (let c = 0; c < maxCols; c++) {
+            const cx = startX + c * stepX;
+            const cy = startY + r * stepY;
+            if (!isOverlapping(cx, cy)) {
+              posX = cx;
+              posY = cy;
+              foundFree = true;
+              break;
+            }
+          }
+          if (foundFree) break;
+        }
+
+        if (!foundFree) {
+          const count = existingNodes.length;
+          posX = startX + (count % maxCols) * stepX + ((count * 20) % 100);
+          posY = startY + Math.floor(count / maxCols) * stepY + ((count * 20) % 100);
+        }
+
         console.log("[NETLAB-APP-DEBUG] Adding node from template:", tmpl.id, { posX, posY });
         const newNode = await addNodeToProject(proj.id, tmpl.id, "", posX, posY);
-        const updatedNodes = [...(proj.nodes || []), newNode];
+        const updatedNodes = [...existingNodes, newNode];
         const updatedProject = { ...proj, nodes: updatedNodes };
 
         commitProjectUpdate(updatedProject, true);

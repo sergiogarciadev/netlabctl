@@ -497,9 +497,7 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.X == 0 && req.Y == 0 {
-		idx := len(top.Nodes)
-		req.X = 100 + float64(idx%3)*240
-		req.Y = 120 + float64(idx/3)*200
+		req.X, req.Y = findFreeNodePosition(top.Nodes)
 	}
 
 	newNode := model.Node{
@@ -640,4 +638,49 @@ func (s *Server) handleStopProjectSimulation(w http.ResponseWriter, r *http.Requ
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "stopped", "projectId": id})
+}
+
+func findFreeNodePosition(nodes []model.Node) (float64, float64) {
+	startX := 100.0
+	startY := 120.0
+	stepX := 240.0
+	stepY := 180.0
+	maxCols := 4
+
+	nodeWidth := 180.0
+	nodeHeight := 90.0
+	margin := 35.0
+
+	isOverlapping := func(x, y float64) bool {
+		candLeft := x - margin
+		candTop := y - margin
+		candRight := x + nodeWidth + margin
+		candBottom := y + nodeHeight + margin
+
+		for _, node := range nodes {
+			nx := node.X
+			ny := node.Y
+			nRight := nx + nodeWidth
+			nBottom := ny + nodeHeight
+
+			overlaps := !(candRight <= nx || candLeft >= nRight || candBottom <= ny || candTop >= nBottom)
+			if overlaps {
+				return true
+			}
+		}
+		return false
+	}
+
+	for r := 0; r < 50; r++ {
+		for c := 0; c < maxCols; c++ {
+			posX := startX + float64(c)*stepX
+			posY := startY + float64(r)*stepY
+			if !isOverlapping(posX, posY) {
+				return posX, posY
+			}
+		}
+	}
+
+	count := len(nodes)
+	return startX + float64(count%maxCols)*stepX, startY + float64(count/maxCols)*stepY
 }
