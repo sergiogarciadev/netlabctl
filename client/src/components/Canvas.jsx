@@ -2051,9 +2051,27 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
       }
     }
 
+    // Helper to check if device SVG has 2 rows of ports
+    const hasTwoPortRows = (pmap) => {
+      if (!pmap || pmap.size < 2) return false;
+      const ySet = new Set();
+      for (const pos of pmap.values()) {
+        if (pos && typeof pos.fracY === "number") {
+          ySet.add(Math.round(pos.fracY * 50));
+        }
+      }
+      return ySet.size >= 2;
+    };
+
     if (portFrac) {
+      let xOffset = 0;
+      if (hasTwoPortRows(activePortMap)) {
+        const pNum = parsePortNum(portId);
+        // Odd rows/ports (1, 3, 5...) -> -10px (left), Even rows/ports (2, 4, 6...) -> +10px (right)
+        xOffset = pNum % 2 === 0 ? 10 : -10;
+      }
       return {
-        x: topLeftX + groupWidth * portFrac.fracX,
+        x: topLeftX + groupWidth * portFrac.fracX + xOffset,
         y: topLeftY + groupHeight * portFrac.fracY,
       };
     }
@@ -2064,8 +2082,14 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     const fracX = (portIndex + 1) / (count + 1);
     const fracY = 0.76;
 
+    let fallbackXOffset = 0;
+    if (hasTwoPortRows(activePortMap)) {
+      const pNum = parsePortNum(portId);
+      fallbackXOffset = pNum % 2 === 0 ? 10 : -10;
+    }
+
     return {
-      x: topLeftX + groupWidth * fracX,
+      x: topLeftX + groupWidth * fracX + fallbackXOffset,
       y: topLeftY + groupHeight * fracY,
     };
   };
