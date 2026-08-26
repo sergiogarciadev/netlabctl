@@ -1830,26 +1830,6 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   });
 
   nodeGroup.getPortAbsPosition = (portId) => {
-    let portObj = portElementsMap.get(portId);
-    if (!portObj) {
-      const idx = nodePorts.findIndex((p) => p.id === portId || p.name === portId);
-      if (idx >= 0) {
-        const targetPort = nodePorts[idx];
-        portObj = portElementsMap.get(targetPort.id) || portElementsMap.get(targetPort.name);
-      }
-    }
-
-    if (portObj && typeof portObj.calcTransformMatrix === "function") {
-      const matrix = portObj.calcTransformMatrix();
-      if (matrix && matrix.length >= 6) {
-        const absX = matrix[4];
-        const absY = matrix[5];
-        if (!Number.isNaN(absX) && !Number.isNaN(absY) && absX !== 0 && absY !== 0) {
-          return { x: absX, y: absY };
-        }
-      }
-    }
-
     const scaleX = nodeGroup.scaleX || 1;
     const scaleY = nodeGroup.scaleY || 1;
     const groupWidth =
@@ -1861,9 +1841,24 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         ? nodeGroup.getScaledHeight()
         : (nodeGroup.height || 50) * scaleY;
 
+    const idx = nodePorts.findIndex((p) => p.id === portId || p.name === portId);
+    const portIndex = idx >= 0 ? idx : 0;
+    const count = nodePorts.length || 1;
+
+    let fracX = 0.5;
+    const fracY = 0.76;
+
+    if (count === 1) {
+      fracX = 0.5;
+    } else {
+      const startFracX = 0.25;
+      const endFracX = 0.75;
+      fracX = startFracX + portIndex * ((endFracX - startFracX) / (count - 1));
+    }
+
     return {
-      x: nodeGroup.left + groupWidth / 2,
-      y: nodeGroup.top + groupHeight / 2,
+      x: nodeGroup.left + groupWidth * fracX,
+      y: nodeGroup.top + groupHeight * fracY,
     };
   };
 
