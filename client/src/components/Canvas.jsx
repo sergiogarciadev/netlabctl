@@ -1380,22 +1380,16 @@ function preprocessSVGString(svgStr) {
     // 2. Resolve inherited styles and text alignment on <text> and <tspan> elements
     const textElems = Array.from(doc.querySelectorAll("text"));
     for (const textNode of textElems) {
-      const textAnchor =
-        textNode.getAttribute("text-anchor") || getStylePropValue(textNode, "text-anchor");
+      const getProp = (node, prop) => node.getAttribute(prop) || getStylePropValue(node, prop);
+
+      const textAnchor = getProp(textNode, "text-anchor");
       const dominantBaseline =
-        textNode.getAttribute("dominant-baseline") ||
-        textNode.getAttribute("alignment-baseline") ||
-        getStylePropValue(textNode, "dominant-baseline") ||
-        getStylePropValue(textNode, "alignment-baseline");
-      const fontFamily =
-        textNode.getAttribute("font-family") || getStylePropValue(textNode, "font-family");
-      const fontSize =
-        textNode.getAttribute("font-size") || getStylePropValue(textNode, "font-size");
-      const fontWeight =
-        textNode.getAttribute("font-weight") || getStylePropValue(textNode, "font-weight");
-      const fontStyle =
-        textNode.getAttribute("font-style") || getStylePropValue(textNode, "font-style");
-      const fill = textNode.getAttribute("fill") || getStylePropValue(textNode, "fill");
+        getProp(textNode, "dominant-baseline") || getProp(textNode, "alignment-baseline");
+      const fontFamily = getProp(textNode, "font-family");
+      const fontSize = getProp(textNode, "font-size");
+      const fontWeight = getProp(textNode, "font-weight");
+      const fontStyle = getProp(textNode, "font-style");
+      const fill = getProp(textNode, "fill");
 
       if (textAnchor) textNode.setAttribute("text-anchor", textAnchor);
       if (dominantBaseline) textNode.setAttribute("dominant-baseline", dominantBaseline);
@@ -1405,18 +1399,44 @@ function preprocessSVGString(svgStr) {
       if (fontStyle) textNode.setAttribute("font-style", fontStyle);
       if (fill) textNode.setAttribute("fill", fill);
 
-      const tspans = Array.from(textNode.querySelectorAll("tspan"));
-      for (const tspan of tspans) {
-        if (!tspan.getAttribute("font-family") && fontFamily)
-          tspan.setAttribute("font-family", fontFamily);
-        if (!tspan.getAttribute("font-size") && fontSize) tspan.setAttribute("font-size", fontSize);
-        if (!tspan.getAttribute("font-weight") && fontWeight)
-          tspan.setAttribute("font-weight", fontWeight);
-        if (!tspan.getAttribute("font-style") && fontStyle)
-          tspan.setAttribute("font-style", fontStyle);
-        if (!tspan.getAttribute("fill") && fill) tspan.setAttribute("fill", fill);
-        if (!tspan.getAttribute("text-anchor") && textAnchor)
-          tspan.setAttribute("text-anchor", textAnchor);
+      const processTSpan = (tspanNode, parentProps) => {
+        const tAnchor = getProp(tspanNode, "text-anchor") || parentProps.textAnchor;
+        const fFamily = getProp(tspanNode, "font-family") || parentProps.fontFamily;
+        const fSize = getProp(tspanNode, "font-size") || parentProps.fontSize;
+        const fWeight = getProp(tspanNode, "font-weight") || parentProps.fontWeight;
+        const fStyle = getProp(tspanNode, "font-style") || parentProps.fontStyle;
+        const fFill = getProp(tspanNode, "fill") || parentProps.fill;
+
+        if (tAnchor) tspanNode.setAttribute("text-anchor", tAnchor);
+        if (fFamily) tspanNode.setAttribute("font-family", fFamily);
+        if (fSize) tspanNode.setAttribute("font-size", fSize);
+        if (fWeight) tspanNode.setAttribute("font-weight", fWeight);
+        if (fStyle) tspanNode.setAttribute("font-style", fStyle);
+        if (fFill) tspanNode.setAttribute("fill", fFill);
+
+        const currentProps = {
+          textAnchor: tAnchor,
+          fontFamily: fFamily,
+          fontSize: fSize,
+          fontWeight: fWeight,
+          fontStyle: fStyle,
+          fill: fFill,
+        };
+
+        const children = Array.from(tspanNode.children);
+        for (const child of children) {
+          if (child.tagName && child.tagName.toLowerCase() === "tspan") {
+            processTSpan(child, currentProps);
+          }
+        }
+      };
+
+      const topProps = { textAnchor, fontFamily, fontSize, fontWeight, fontStyle, fill };
+      const directTSpans = Array.from(textNode.children).filter(
+        (child) => child.tagName && child.tagName.toLowerCase() === "tspan",
+      );
+      for (const tspan of directTSpans) {
+        processTSpan(tspan, topProps);
       }
     }
 
