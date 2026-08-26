@@ -192,6 +192,7 @@ export function TerminalWindow({
       },
       fontFamily: 'Consolas, Monaco, "Courier New", monospace',
       fontSize: 13,
+      lineHeight: 1.2,
       cursorBlink: true,
       allowProposedApi: true,
       convertEol: true,
