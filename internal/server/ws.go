@@ -650,7 +650,8 @@ func (h *WSHub) SyncTopologyNetworkAndMonitors(top *model.Topology) {
 			var portStates []qemu.PortLinkState
 			for i, port := range n.Ports {
 				devID := fmt.Sprintf("eth%d", i)
-				portKey := fmt.Sprintf("%s:%s", n.ID, port.ID)
+				portKeyID := fmt.Sprintf("%s:%s", n.ID, port.ID)
+				portKeyName := fmt.Sprintf("%s:%s", n.ID, port.Name)
 
 				pType := port.Type
 				if pType == "" {
@@ -661,7 +662,7 @@ func (h *WSHub) SyncTopologyNetworkAndMonitors(top *model.Topology) {
 				// Managed interfaces are set to link UP ('on') if connected to a wire in the topology.
 				linkOn := true
 				if pType == "managed" {
-					linkOn = connectedPorts[portKey]
+					linkOn = connectedPorts[portKeyID] || (port.Name != "" && connectedPorts[portKeyName])
 				}
 
 				portStates = append(portStates, qemu.PortLinkState{

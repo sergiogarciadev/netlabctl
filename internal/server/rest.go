@@ -200,6 +200,11 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.hub != nil {
+		s.hub.SyncTopologyNetworkAndMonitors(&top)
+		s.hub.BroadcastToProject(top.ID, model.MsgTypeProjectState, &top)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(top)
 }
