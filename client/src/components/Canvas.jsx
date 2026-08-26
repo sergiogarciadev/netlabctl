@@ -434,11 +434,7 @@ export function Canvas({
 
       if (target?.isNodeGroup) {
         nodeId = target.nodeData.id;
-        if (subTarget?.isWarningBadge) {
-          subTargetTag = "⚠️ Image is missing";
-        } else {
-          subTargetTag = subTarget?.id || subTarget?.portId || subTarget?.type;
-        }
+        subTargetTag = subTarget?.id || subTarget?.portId || subTarget?.type;
         if (subTarget?.portId) {
           const pPos = target.getPortAbsPosition(subTarget.portId);
           const pObj = (target.nodeData?.ports || []).find((p) => p.id === subTarget.portId);
@@ -592,9 +588,7 @@ export function Canvas({
           hoveredPortObjRef.current = null;
           canvas.requestRenderAll();
         }
-        if (subTarget?.isWarningBadge) {
-          canvas.defaultCursor = "help";
-        } else if (!wiringStateRef.current.active) {
+        if (!wiringStateRef.current.active) {
           canvas.defaultCursor = activeToolRef.current === "wire" ? "crosshair" : "default";
         }
       }
@@ -1474,8 +1468,6 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
       id: "warning-image-missing",
     });
     warningBadge.isWarningBadge = true;
-    warningBadge.hoverCursor = "help";
-    warningBadge.tooltipText = "Image is missing";
     svgObjects.push(warningBadge);
   }
 

@@ -1,5 +1,6 @@
 import {
   Activity,
+  AlertTriangle,
   Check,
   Cpu,
   Edit2,
@@ -269,6 +270,32 @@ export function Sidebar({
           Power: {selectedNode.power === "on" || selectedNode.status === "running" ? "ON" : "OFF"}
         </span>
       </div>
+
+      {/* Missing Disk Image Warning Banner */}
+      {(!tmpl?.image || tmpl?.imageExists === false) && (
+        <div
+          style={{
+            marginBottom: "12px",
+            padding: "8px 12px",
+            borderRadius: "6px",
+            background: "rgba(239, 68, 68, 0.15)",
+            border: "1px solid rgba(239, 68, 68, 0.35)",
+            color: "#f87171",
+            fontSize: "0.8rem",
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+          <span>
+            Disk image <strong>"{tmpl?.image || "qcow2"}"</strong> is missing from{" "}
+            <code>~/.netlabctl/images/</code>. Machine cannot boot until an image is uploaded in
+            Settings.
+          </span>
+        </div>
+      )}
 
       {/* Row 2: Power Controls (Start / Shutdown / Reset / Force Power Off) */}
       <div
