@@ -545,7 +545,7 @@ export function Canvas({
         });
       }
 
-      if (nearestPort && target?.isNodeGroup) {
+      if (activeToolRef.current === "wire" && nearestPort && target?.isNodeGroup) {
         const pObj = target.getPortElement ? target.getPortElement(nearestPort.portId) : null;
         const isManaged = nearestPort.isManaged !== false;
 
@@ -676,7 +676,7 @@ export function Canvas({
         }
       }
 
-      if (nearPort && targetNodeGroup) {
+      if (activeToolRef.current === "wire" && nearPort && targetNodeGroup) {
         const clickedPortId = nearPort.portId;
         const portAbsPos = nearPort.absPos;
         const node = targetNodeGroup.nodeData;
