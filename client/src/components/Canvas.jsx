@@ -1156,7 +1156,7 @@ export function Canvas({
   );
 }
 
-// Check if targetGroup collides with or violates the 100px vertical clearance requirement of any other device
+// Check if targetGroup collides with any other device group on the canvas
 function checkDeviceCollision(targetGroup, allGroups) {
   const targetWidth =
     typeof targetGroup.getScaledWidth === "function"
@@ -1167,12 +1167,12 @@ function checkDeviceCollision(targetGroup, allGroups) {
       ? targetGroup.getScaledHeight()
       : (targetGroup.height || 50) * (targetGroup.scaleY || 1);
 
-  const minHorizontalGap = 20;
-  const minVerticalGap = 100; // Must have at least 100px vertical clearance between vertically aligned devices
+  const gap = 10; // Minimum 10px spacing between devices
 
-  const tLeft = targetGroup.left;
+  // In Fabric.js v7, group.left & group.top represent group center
+  const tLeft = targetGroup.left - targetWidth / 2;
   const tRight = tLeft + targetWidth;
-  const tTop = targetGroup.top;
+  const tTop = targetGroup.top - targetHeight / 2;
   const tBottom = tTop + targetHeight;
 
   for (const other of allGroups) {
@@ -1187,27 +1187,17 @@ function checkDeviceCollision(targetGroup, allGroups) {
         ? other.getScaledHeight()
         : (other.height || 50) * (other.scaleY || 1);
 
-    const oLeft = other.left;
+    const oLeft = other.left - otherWidth / 2;
     const oRight = oLeft + otherWidth;
-    const oTop = other.top;
+    const oTop = other.top - otherHeight / 2;
     const oBottom = oTop + otherHeight;
 
-    // Check horizontal overlap with 20px gap
-    const isHorizOverlap = tRight + minHorizontalGap > oLeft && tLeft - minHorizontalGap < oRight;
+    // Check direct bounding box overlap with 10px gap
+    const isOverlap =
+      tRight + gap > oLeft && tLeft - gap < oRight && tBottom + gap > oTop && tTop - gap < oBottom;
 
-    if (isHorizOverlap) {
-      // Symmetrical 100px vertical clearance check:
-      // If target is above 'other': target bottom must be <= other top - 100px
-      // If target is below 'other': target top must be >= other bottom + 100px
-      if (tTop < oTop) {
-        if (tBottom + minVerticalGap > oTop) {
-          return true; // Too close above 'other'!
-        }
-      } else {
-        if (tTop - minVerticalGap < oBottom) {
-          return true; // Too close below 'other'!
-        }
-      }
+    if (isOverlap) {
+      return true;
     }
   }
 
@@ -1227,8 +1217,8 @@ function getNodeBoundingBox(group) {
       ? group.getScaledHeight()
       : (group.height || 50) * (group.scaleY || 1);
 
-  const left = group.left - padding;
-  const top = group.top - padding;
+  const left = group.left - rawWidth / 2 - padding;
+  const top = group.top - rawHeight / 2 - padding;
   const width = rawWidth + padding * 2;
   const height = rawHeight + padding * 2;
 
