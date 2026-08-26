@@ -385,13 +385,6 @@ func (h *WSHub) startProjectSimulation(projectID string) {
 	}
 
 	portAddrs := make(map[string]string) // portID -> "127.0.N.P:PORT"
-	connectedPorts := make(map[string]bool)
-
-	// Identify all connected ports from wires
-	for _, wire := range top.Wires {
-		connectedPorts[wire.SrcPortID] = true
-		connectedPorts[wire.DstPortID] = true
-	}
 
 	// 1. Register Managed Network TCP Listeners for ALL node ports
 	for nIdx, node := range top.Nodes {
@@ -473,12 +466,6 @@ func (h *WSHub) startSingleNode(projectID string, nodeID string) error {
 	}
 
 	portAddrs := make(map[string]string)
-	connectedPorts := make(map[string]bool)
-
-	for _, wire := range top.Wires {
-		connectedPorts[wire.SrcPortID] = true
-		connectedPorts[wire.DstPortID] = true
-	}
 
 	for nIdx, n := range top.Nodes {
 		nodeNum := nIdx + 1
