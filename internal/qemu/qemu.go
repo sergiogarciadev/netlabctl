@@ -137,7 +137,6 @@ func (m *Manager) RecreateNodeDisk(projectID string, node *model.Node, tmplDir s
 	diskPath := filepath.Join(nDir, "disk.qcow2")
 	_ = os.Remove(diskPath)
 	_ = os.Remove(filepath.Join(nDir, "cidata.iso"))
-	_ = os.Remove(filepath.Join(nDir, "cloud-init.iso"))
 
 	logger.Log.Info("Recreating disk overlay for node", "nodeID", node.ID, "projectID", projectID)
 	return m.PrepareNodeDisk(projectID, node, tmplDir, tmpl)
