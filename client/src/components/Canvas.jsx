@@ -1336,10 +1336,14 @@ function calculateShortestOrthogonalPath(
 
   const p1Num = parsePortNum(srcPortId);
   const p2Num = parsePortNum(dstPortId);
+  const span = Math.abs(p1Num - p2Num);
 
-  // Track spacing: 14px parallel separation per port
-  const trackOffset = (p1Num - 1) * 14;
-  const trackOffsetDst = (p2Num - 1) * 14;
+  // Track spacing: Smart span-based channel offset to avoid ladder drop effect
+  const isSameDevice = srcNodeGroup && dstNodeGroup && srcNodeGroup === dstNodeGroup;
+  const trackOffset = isSameDevice
+    ? Math.min(24, Math.floor(span / 2) * 6)
+    : Math.min(24, ((p1Num - 1) % 4) * 6);
+  const trackOffsetDst = isSameDevice ? trackOffset : Math.min(24, ((p2Num - 1) % 4) * 6);
 
   const srcBox = getNodeBoundingBox(srcNodeGroup);
   const dstBox = getNodeBoundingBox(dstNodeGroup);
