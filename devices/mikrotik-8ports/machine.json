@@ -1,0 +1,63 @@
+{
+  "id": "mikrotik-8ports",
+  "name": "Mikrotik CHR (8 ports)",
+  "description": "Mikrotik Cloud Hosted Router with 8 ports",
+  "group": "Mikrotik",
+  "image": "chr-7.21.5.qcow2",
+  "drawing": "drawing.svg",
+  "system": "qemu-system-x86_64",
+  "memory": 128,
+  "smp": 1,
+  "ports": [
+    {
+      "id": "device-port-1",
+      "name": "ether-1",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-2",
+      "name": "ether-2",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-3",
+      "name": "ether-3",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-4",
+      "name": "ether-4",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-5",
+      "name": "ether-5",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-6",
+      "name": "ether-6",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-7",
+      "name": "ether-7",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-8",
+      "name": "ether-8",
+      "device": "virtio-net-pci"
+    }
+  ],
+  "status": [
+    {
+      "id": "device-name",
+      "type": "name"
+    },
+    {
+      "id": "device-power",
+      "type": "power"
+    }
+  ]
+}

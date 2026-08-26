@@ -1,0 +1,219 @@
+{
+  "id": "mikrotik-32ports",
+  "name": "Mikrotik CHR (32 ports)",
+  "description": "Mikrotik Cloud Hosted Router with 32 ports",
+  "group": "Mikrotik",
+  "image": "chr-7.21.5.qcow2",
+  "drawing": "drawing.svg",
+  "system": "qemu-system-x86_64",
+  "memory": 256,
+  "smp": 1,
+  "qemu_args": [
+    "-device", "pci-bridge,chassis_nr=1,id=bridge1",
+    "-device", "pci-bridge,chassis_nr=2,id=bridge2"
+  ],
+  "ports": [
+    {
+      "id": "device-port-1",
+      "name": "ether-1",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-2",
+      "name": "ether-2",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-3",
+      "name": "ether-3",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-4",
+      "name": "ether-4",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-5",
+      "name": "ether-5",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-6",
+      "name": "ether-6",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-7",
+      "name": "ether-7",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-8",
+      "name": "ether-8",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-9",
+      "name": "ether-9",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-10",
+      "name": "ether-10",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-11",
+      "name": "ether-11",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-12",
+      "name": "ether-12",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-13",
+      "name": "ether-13",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-14",
+      "name": "ether-14",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-15",
+      "name": "ether-15",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-16",
+      "name": "ether-16",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge1"
+    },
+    {
+      "id": "device-port-17",
+      "name": "ether-17",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-18",
+      "name": "ether-18",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-19",
+      "name": "ether-19",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-20",
+      "name": "ether-20",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-21",
+      "name": "ether-21",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-22",
+      "name": "ether-22",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-23",
+      "name": "ether-23",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-24",
+      "name": "ether-24",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-25",
+      "name": "ether-25",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-26",
+      "name": "ether-26",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-27",
+      "name": "ether-27",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-28",
+      "name": "ether-28",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-29",
+      "name": "ether-29",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-30",
+      "name": "ether-30",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-31",
+      "name": "ether-31",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    },
+    {
+      "id": "device-port-32",
+      "name": "ether-32",
+      "device": "virtio-net-pci",
+      "device_opts": "bus=bridge2"
+    }
+  ],
+  "status": [
+    {
+      "id": "device-name",
+      "type": "name"
+    },
+    {
+      "id": "device-power",
+      "type": "power"
+    }
+  ]
+}
