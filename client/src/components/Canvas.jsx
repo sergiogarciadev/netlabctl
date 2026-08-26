@@ -1695,7 +1695,20 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   if (!masterObjects && svgStr) {
     try {
       const processedStr = preprocessSVGString(svgStr);
-      const parsed = await loadSVGFromString(processedStr);
+      const parsed = await loadSVGFromString(processedStr, (docElem, fabricObj) => {
+        if (docElem && typeof docElem.getAttribute === "function" && fabricObj) {
+          const id = docElem.getAttribute("id");
+          const className = docElem.getAttribute("class");
+          if (id) {
+            fabricObj.id = id;
+            fabricObj.name = id;
+          }
+          if (className) {
+            fabricObj.className = className;
+            fabricObj.class = className;
+          }
+        }
+      });
       if (parsed.objects && parsed.objects.length > 0) {
         masterObjects = parsed.objects.filter((o) => o !== null);
         if (tmpl?.id) {
@@ -1709,7 +1722,9 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
 
   let svgObjects = [];
   if (masterObjects && masterObjects.length > 0) {
-    svgObjects = await Promise.all(masterObjects.map((obj) => obj.clone()));
+    svgObjects = await Promise.all(
+      masterObjects.map((obj) => obj.clone(["id", "name", "className", "class"])),
+    );
   }
 
   if (svgObjects.length === 0) {
