@@ -7,7 +7,6 @@ import { Sidebar } from "./components/Sidebar";
 import { TerminalWindow } from "./components/TerminalWindow";
 import { Toolbar } from "./components/Toolbar";
 import {
-  WSClient,
   addNodeToProject,
   cloneProject,
   createProject,
@@ -16,6 +15,7 @@ import {
   fetchProject,
   fetchProjects,
   fetchTemplates,
+  importTemplateZip,
   recreateNodeDisk,
   resetNodePower,
   shutdownNodePower,
@@ -24,6 +24,7 @@ import {
   stopNodePower,
   stopProjectSimulation,
   updateProject,
+  WSClient,
 } from "./services/api";
 
 export function App() {

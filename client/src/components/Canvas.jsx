@@ -3,11 +3,11 @@ import {
   Canvas as FabricCanvas,
   Text as FabricText,
   Group,
+  loadSVGFromString,
   Polygon,
   Polyline,
   Rect,
   Shadow,
-  loadSVGFromString,
 } from "fabric";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";

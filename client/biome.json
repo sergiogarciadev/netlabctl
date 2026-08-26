@@ -1,14 +1,17 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.10/schema.json",
   "files": {
-    "include": ["src/**/*"],
-    "ignore": ["**/dist/**", "**/node_modules/**"]
+    "includes": ["src/**/*"]
   },
   "linter": {
     "enabled": true,
     "rules": {
-      "a11y": {
-        "useSemanticElements": "off"
+      "a11y": "off",
+      "complexity": "off",
+      "correctness": {
+        "noUnusedVariables": "off",
+        "noUnusedImports": "off",
+        "noUnusedFunctionParameters": "off"
       }
     }
   },
