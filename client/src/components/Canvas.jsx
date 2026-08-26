@@ -85,6 +85,7 @@ export function Canvas({
 
   // Isolated local debug info state
   const [debugInfo, setDebugInfo] = useState(null);
+  const lastDebugStateRef = useRef(null);
   const [zoomLevel, setZoomLevel] = useState(100);
 
   const showDebugHudRef = useRef(showDebugHud);
@@ -525,29 +526,38 @@ export function Canvas({
       }
 
       if (showDebugHudRef.current) {
-        setDebugInfo((prev) => {
-          if (
-            prev &&
-            prev.nodeId === nodeId &&
-            prev.subTargetTag === subTargetTag &&
-            prev.nearestPort?.portId === nearestPort?.portId &&
-            prev.hoveredWire?.id === hoveredWire?.id &&
-            prev.isWiring === wiringStateRef.current.active
-          ) {
-            return prev;
-          }
-          return {
+        const last = lastDebugStateRef.current;
+        const isWiring = wiringStateRef.current.active;
+        const nearestPortId = nearestPort?.portId;
+        const hoveredWireId = hoveredWire?.id;
+
+        if (
+          !last ||
+          last.nodeId !== nodeId ||
+          last.subTargetTag !== subTargetTag ||
+          last.nearestPortId !== nearestPortId ||
+          last.hoveredWireId !== hoveredWireId ||
+          last.isWiring !== isWiring
+        ) {
+          lastDebugStateRef.current = {
+            nodeId,
+            subTargetTag,
+            nearestPortId,
+            hoveredWireId,
+            isWiring,
+          };
+          setDebugInfo({
             activeTool: activeToolRef.current,
-            pointer,
+            pointer: { x: Math.round(pointer.x), y: Math.round(pointer.y) },
             nodeId,
             subTargetTag,
             nearestPort,
             hoveredWire,
             onTestPulseWire: handleTestPulseWire,
-            isWiring: wiringStateRef.current.active,
+            isWiring,
             srcPortId: wiringStateRef.current.srcPortId,
-          };
-        });
+          });
+        }
       }
 
       if (activeToolRef.current === "wire" && nearestPort && target?.isNodeGroup) {
@@ -794,6 +804,37 @@ export function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cancelWiring, handleTestPulseWire]);
 
+  const nodesKey = useMemo(
+    () =>
+      JSON.stringify(
+        (nodes || []).map((n) => ({
+          id: n.id,
+          x: n.x,
+          y: n.y,
+          name: n.name,
+          power: n.power,
+          status: n.status,
+          ports: n.ports?.map((p) => ({ id: p.id, type: p.type, MAC: p.MAC })),
+        })),
+      ),
+    [nodes],
+  );
+
+  const wiresKey = useMemo(
+    () =>
+      JSON.stringify(
+        (wires || []).map((w) => ({
+          id: w.id,
+          srcNodeId: w.srcNodeId,
+          srcPortId: w.srcPortId,
+          dstNodeId: w.dstNodeId,
+          dstPortId: w.dstPortId,
+          tzspTarget: w.tzspTarget,
+        })),
+      ),
+    [wires],
+  );
+
   // Sync Nodes and Wires on Canvas - Preserves existing Zoom & Pan ViewportTransform!
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
@@ -903,7 +944,7 @@ export function Canvas({
     return () => {
       isCancelled = true;
     };
-  }, [nodes, wires, templates]);
+  }, [nodesKey, wiresKey, templates]);
 
   // Lightweight Tool Switching — Toggles selectable/cursor properties without clearing the canvas!
   useEffect(() => {
@@ -1385,19 +1426,29 @@ function preprocessSVGString(svgStr) {
   }
 }
 
-async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) {
-  let svgObjects = [];
+const parsedSvgCache = new Map();
 
-  if (svgStr) {
+async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) {
+  let masterObjects = tmpl?.id ? parsedSvgCache.get(tmpl.id) : null;
+
+  if (!masterObjects && svgStr) {
     try {
       const processedStr = preprocessSVGString(svgStr);
       const parsed = await loadSVGFromString(processedStr);
       if (parsed.objects && parsed.objects.length > 0) {
-        svgObjects = parsed.objects.filter((o) => o !== null);
+        masterObjects = parsed.objects.filter((o) => o !== null);
+        if (tmpl?.id) {
+          parsedSvgCache.set(tmpl.id, masterObjects);
+        }
       }
     } catch (e) {
       console.warn("[NETLAB-WIRE-DEBUG] Failed to parse device SVG:", e);
     }
+  }
+
+  let svgObjects = [];
+  if (masterObjects && masterObjects.length > 0) {
+    svgObjects = await Promise.all(masterObjects.map((obj) => obj.clone()));
   }
 
   if (svgObjects.length === 0) {
