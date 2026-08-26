@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -286,6 +287,34 @@ func (ps *ManagedPortSocket) WriteFrame(header, payload []byte) error {
 	return err
 }
 
+func (nm *NetworkManager) findPortSocket(nodeID, portIDOrName string) *ManagedPortSocket {
+	directKey := fmt.Sprintf("%s:%s", nodeID, portIDOrName)
+	if ps, ok := nm.portSockets[directKey]; ok {
+		return ps
+	}
+
+	cleanTarget := strings.ToLower(portIDOrName)
+	cleanTargetNoPrefix := strings.TrimPrefix(cleanTarget, "device-port-")
+	cleanTargetNoPrefix = strings.TrimPrefix(cleanTargetNoPrefix, "port-")
+
+	for _, ps := range nm.portSockets {
+		if ps.NodeID == nodeID {
+			if strings.EqualFold(ps.PortID, portIDOrName) {
+				return ps
+			}
+
+			cleanPSPortID := strings.ToLower(ps.PortID)
+			cleanPSPortIDNoPrefix := strings.TrimPrefix(cleanPSPortID, "device-port-")
+			cleanPSPortIDNoPrefix = strings.TrimPrefix(cleanPSPortIDNoPrefix, "port-")
+
+			if cleanPSPortIDNoPrefix == cleanTargetNoPrefix {
+				return ps
+			}
+		}
+	}
+	return nil
+}
+
 // AddWireBridge connects two registered managed port sockets.
 func (nm *NetworkManager) AddWireBridge(wire model.Wire) error {
 	nm.mu.Lock()
@@ -295,14 +324,11 @@ func (nm *NetworkManager) AddWireBridge(wire model.Wire) error {
 		return nil
 	}
 
-	srcKey := fmt.Sprintf("%s:%s", wire.SrcNodeID, wire.SrcPortID)
-	dstKey := fmt.Sprintf("%s:%s", wire.DstNodeID, wire.DstPortID)
+	psA := nm.findPortSocket(wire.SrcNodeID, wire.SrcPortID)
+	psB := nm.findPortSocket(wire.DstNodeID, wire.DstPortID)
 
-	psA, okA := nm.portSockets[srcKey]
-	psB, okB := nm.portSockets[dstKey]
-
-	if !okA || !okB {
-		return fmt.Errorf("port sockets not registered for wire %s (srcKey: %s, dstKey: %s)", wire.ID, srcKey, dstKey)
+	if psA == nil || psB == nil {
+		return fmt.Errorf("port sockets not registered for wire %s (src: %s:%s, dst: %s:%s)", wire.ID, wire.SrcNodeID, wire.SrcPortID, wire.DstNodeID, wire.DstPortID)
 	}
 
 	bridge := &WireBridge{
@@ -315,7 +341,7 @@ func (nm *NetworkManager) AddWireBridge(wire model.Wire) error {
 	nm.bridges[wire.ID] = bridge
 
 	go bridge.runBridge()
-	logger.Log.Info("Established managed network wire bridge", "wireID", wire.ID, "srcKey", srcKey, "dstKey", dstKey)
+	logger.Log.Info("Established managed network wire bridge", "wireID", wire.ID, "srcKey", psA.Key, "dstKey", psB.Key)
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -626,6 +627,24 @@ func (h *WSHub) SyncTopologyNetworkAndMonitors(top *model.Topology) {
 		wireMap[wire.ID] = true
 		connectedPorts[fmt.Sprintf("%s:%s", wire.SrcNodeID, wire.SrcPortID)] = true
 		connectedPorts[fmt.Sprintf("%s:%s", wire.DstNodeID, wire.DstPortID)] = true
+
+		for _, node := range top.Nodes {
+			if node.ID == wire.SrcNodeID || node.ID == wire.DstNodeID {
+				for _, port := range node.Ports {
+					cleanPID := strings.TrimPrefix(port.ID, "device-port-")
+					cleanSrcP := strings.TrimPrefix(wire.SrcPortID, "device-port-")
+					cleanDstP := strings.TrimPrefix(wire.DstPortID, "device-port-")
+
+					if (node.ID == wire.SrcNodeID && (port.ID == wire.SrcPortID || port.Name == wire.SrcPortID || cleanPID == cleanSrcP)) ||
+						(node.ID == wire.DstNodeID && (port.ID == wire.DstPortID || port.Name == wire.DstPortID || cleanPID == cleanDstP)) {
+						connectedPorts[fmt.Sprintf("%s:%s", node.ID, port.ID)] = true
+						if port.Name != "" {
+							connectedPorts[fmt.Sprintf("%s:%s", node.ID, port.Name)] = true
+						}
+					}
+				}
+			}
+		}
 
 		// Add/update wire bridge
 		_ = h.netMgr.AddWireBridge(wire)
