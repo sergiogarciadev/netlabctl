@@ -1619,6 +1619,13 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
   });
 
   if (isImageMissing) {
+    // Dim device drawing SVG elements to make the machine look visually disabled
+    for (const o of nodeGroup._objects || []) {
+      if (!o.isWarningBadge && typeof o.set === "function") {
+        o.set({ opacity: 0.4 });
+      }
+    }
+
     const wObj = (nodeGroup._objects || []).find((o) => o.isWarningBadge);
     if (wObj) {
       const gWidth = nodeGroup.width || 120;
@@ -1626,6 +1633,7 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
       wObj.set({
         left: -gWidth / 2 + 4,
         top: -gHeight / 2 + 4,
+        opacity: 1.0,
       });
       nodeGroup.bringObjectToFront(wObj);
     }
