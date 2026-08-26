@@ -1720,6 +1720,9 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
         };
         tagChildren(obj);
         portElementsMap.set(port.id, obj);
+        if (port.name) {
+          portElementsMap.set(port.name, obj);
+        }
       }
     });
 
@@ -1776,6 +1779,9 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
       const localX = portObj.left !== undefined ? portObj.left : 0;
       const localY = portObj.top !== undefined ? portObj.top : 0;
       nodeGroup.portRelativePositions.set(port.id, { x: localX, y: localY });
+      if (port.name) {
+        nodeGroup.portRelativePositions.set(port.name, { x: localX, y: localY });
+      }
     } else {
       const count = nodePorts.length;
       const width = nodeGroup.width || 120;
@@ -1786,6 +1792,9 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
       const localX = relXFromLeft - width / 2;
       const localY = relYFromTop - height / 2;
       nodeGroup.portRelativePositions.set(port.id, { x: localX, y: localY });
+      if (port.name) {
+        nodeGroup.portRelativePositions.set(port.name, { x: localX, y: localY });
+      }
     }
   });
 
@@ -1804,23 +1813,34 @@ async function createExactSVGDeviceGroup(node, tmpl, svgStr, wires, activeTool) 
     const groupCenterX = nodeGroup.left + groupWidth / 2;
     const groupCenterY = nodeGroup.top + groupHeight / 2;
 
+    let localPos = null;
+
     if (portElementsMap.has(portId)) {
       const portObj = portElementsMap.get(portId);
-      if (portObj) {
-        const localX = portObj.left !== undefined ? portObj.left : 0;
-        const localY = portObj.top !== undefined ? portObj.top : 0;
-        return {
-          x: groupCenterX + localX * scaleX,
-          y: groupCenterY + localY * scaleY,
-        };
+      if (portObj && portObj.left !== undefined && portObj.top !== undefined) {
+        localPos = { x: portObj.left, y: portObj.top };
       }
     }
 
-    const relPos = nodeGroup.portRelativePositions.get(portId);
-    if (relPos) {
+    if (!localPos) {
+      const idx = nodePorts.findIndex((p) => p.id === portId || p.name === portId);
+      const targetPort = idx >= 0 ? nodePorts[idx] : null;
+      if (targetPort && portElementsMap.has(targetPort.id)) {
+        const portObj = portElementsMap.get(targetPort.id);
+        if (portObj && portObj.left !== undefined && portObj.top !== undefined) {
+          localPos = { x: portObj.left, y: portObj.top };
+        }
+      }
+    }
+
+    if (!localPos && nodeGroup.portRelativePositions.has(portId)) {
+      localPos = nodeGroup.portRelativePositions.get(portId);
+    }
+
+    if (localPos) {
       return {
-        x: groupCenterX + relPos.x * scaleX,
-        y: groupCenterY + relPos.y * scaleY,
+        x: groupCenterX + localPos.x * scaleX,
+        y: groupCenterY + localPos.y * scaleY,
       };
     }
 
