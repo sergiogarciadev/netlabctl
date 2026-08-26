@@ -29,6 +29,7 @@ export function Canvas({
   onDeleteNode,
   onUpdateNode,
   onViewportChange,
+  jumpToNodeTarget = null,
   showDebugHud = true,
 }) {
   const containerRef = useRef(null);
@@ -112,6 +113,62 @@ export function Canvas({
       zoom,
     });
   }, []);
+  // Smoothly center the canvas viewport on jumpToNodeTarget
+  useEffect(() => {
+    if (!jumpToNodeTarget?.id) return;
+    const targetNode = (nodes || []).find((n) => n.id === jumpToNodeTarget.id);
+    if (!targetNode) return;
+
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || canvas.isDisposed) return;
+
+    const allObjects = canvas.getObjects();
+    const targetGroup = allObjects.find(
+      (obj) => obj.isNodeGroup && obj.nodeData?.id === targetNode.id,
+    );
+
+    let nodeX = targetNode.x || 0;
+    let nodeY = targetNode.y || 0;
+    let nodeWidth = 140;
+    let nodeHeight = 50;
+
+    if (targetGroup) {
+      nodeX = targetGroup.left;
+      nodeY = targetGroup.top;
+      nodeWidth =
+        typeof targetGroup.getScaledWidth === "function"
+          ? targetGroup.getScaledWidth()
+          : (targetGroup.width || 140) * (targetGroup.scaleX || 1);
+      nodeHeight =
+        typeof targetGroup.getScaledHeight === "function"
+          ? targetGroup.getScaledHeight()
+          : (targetGroup.height || 50) * (targetGroup.scaleY || 1);
+    }
+
+    const nodeCenterX = nodeX + nodeWidth / 2;
+    const nodeCenterY = nodeY + nodeHeight / 2;
+
+    const cWidth = containerRef.current?.clientWidth || canvas.width || 1200;
+    const cHeight = containerRef.current?.clientHeight || canvas.height || 800;
+
+    const zoom = canvas.getZoom() || 1;
+
+    const panX = cWidth / 2 - nodeCenterX * zoom;
+    const panY = cHeight / 2 - nodeCenterY * zoom;
+
+    const newVpt = [zoom, 0, 0, zoom, panX, panY];
+    canvas.setViewportTransform(newVpt);
+    viewportTransformRef.current = [...newVpt];
+    canvas.requestRenderAll();
+    notifyViewportChange();
+
+    if (targetGroup) {
+      canvas.setActiveObject(targetGroup);
+    }
+    if (onSelectNodeRef.current) {
+      onSelectNodeRef.current(targetNode);
+    }
+  }, [jumpToNodeTarget, nodes, notifyViewportChange]);
 
   // Isolated local debug info state
   const [debugInfo, setDebugInfo] = useState(null);

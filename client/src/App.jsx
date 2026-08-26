@@ -144,6 +144,13 @@ export function App() {
     zoom: 1,
   });
 
+  const [jumpToNodeTarget, setJumpToNodeTarget] = useState(null);
+
+  const handleJumpToNode = useCallback((nodeId) => {
+    console.log("[NETLAB-APP-DEBUG] Jump to node requested:", nodeId);
+    setJumpToNodeTarget({ id: nodeId, timestamp: Date.now() });
+  }, []);
+
   const handleViewportChange = useCallback((vp) => {
     currentViewportRef.current = vp;
   }, []);
@@ -757,6 +764,8 @@ export function App() {
         onStart={handleStartLab}
         onStop={handleStopLab}
         onAddDevice={() => setIsAddDeviceOpen(true)}
+        nodes={project.nodes || []}
+        onJumpToNode={handleJumpToNode}
         selectedNode={selectedNode}
         onOpenTerminal={handleOpenTerminal}
         onOpenSettings={() => setIsSettingsOpen(true)}
@@ -776,6 +785,7 @@ export function App() {
           onDeleteNode={handleDeleteNode}
           onUpdateNode={handleUpdateNode}
           onViewportChange={handleViewportChange}
+          jumpToNodeTarget={jumpToNodeTarget}
           showDebugHud={config.showDebugHud !== false}
         />
 

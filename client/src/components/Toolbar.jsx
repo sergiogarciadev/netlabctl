@@ -38,6 +38,8 @@ export function Toolbar({
   onStart,
   onStop,
   onAddDevice,
+  nodes = [],
+  onJumpToNode,
   selectedNode,
   onOpenTerminal,
   onOpenSettings,
@@ -222,9 +224,44 @@ export function Toolbar({
           </button>
         )}
 
-        <button type="button" className="btn btn-primary" onClick={onAddDevice}>
-          <Plus size={16} /> Add Device
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <button type="button" className="btn btn-primary" onClick={onAddDevice}>
+            <Plus size={16} /> Add Device
+          </button>
+
+          {nodes && nodes.length > 0 && (
+            <select
+              value=""
+              onChange={(e) => {
+                const targetNodeId = e.target.value;
+                if (targetNodeId && onJumpToNode) {
+                  onJumpToNode(targetNodeId);
+                }
+              }}
+              style={{
+                background: "var(--bg-card)",
+                border: "1px solid var(--border-color)",
+                color: "#38bdf8",
+                borderRadius: "6px",
+                padding: "6px 10px",
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+              title="Jump to device & center on canvas"
+            >
+              <option value="" disabled hidden>
+                🎯 Jump to Device ({nodes.length})...
+              </option>
+              {nodes.map((node) => (
+                <option key={node.id} value={node.id}>
+                  {node.power === "started" || node.power === "running" ? "🟢" : "🔴"}{" "}
+                  {node.name || node.id} ({node.ports?.length || 0} ports)
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
 
         <button
           type="button"
