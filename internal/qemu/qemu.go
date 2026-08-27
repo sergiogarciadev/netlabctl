@@ -601,6 +601,15 @@ func renderCloudInitTemplate(tmplStr string, node *model.Node) string {
 	res = strings.ReplaceAll(res, "${node.name}", node.Name)
 	res = strings.ReplaceAll(res, "${{{ node.id }}}", node.ID)
 	res = strings.ReplaceAll(res, "${{{ node.name }}}", node.Name)
+	res = strings.ReplaceAll(res, "${node.memory}", fmt.Sprintf("%d", node.Memory))
+	res = strings.ReplaceAll(res, "${node.smp}", fmt.Sprintf("%d", node.SMP))
+
+	for i, p := range node.Ports {
+		res = strings.ReplaceAll(res, fmt.Sprintf("${node.ports[%d].mac}", i), p.MAC)
+		res = strings.ReplaceAll(res, fmt.Sprintf("${node.ports[%d].name}", i), p.Name)
+		res = strings.ReplaceAll(res, fmt.Sprintf("${port%d.mac}", i), p.MAC)
+		res = strings.ReplaceAll(res, fmt.Sprintf("${port%d.name}", i), p.Name)
+	}
 	return res
 }
 
