@@ -245,7 +245,8 @@ export function AddDeviceModal({ templates = [], isOpen, onClose, onSelectTempla
                     >
                       <AlertTriangle size={14} />
                       <span>
-                        Disk image file is missing from ~/.netlabctl/images/. Machine cannot boot.
+                        Disk image <strong>"{tmpl.image || "qcow2"}"</strong> is missing from
+                        ~/.netlabctl/images/. Machine cannot boot.
                       </span>
                     </div>
                   )}
