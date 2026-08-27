@@ -154,3 +154,43 @@ func TestImportProjectTopology(t *testing.T) {
 		t.Fatalf("GetProject failed for imported project: %v", err)
 	}
 }
+
+func TestSwaggerEndpoints(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "netlabctl_swagger_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	store, err := storage.NewStorage(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+
+	srv := NewServer(":0", store)
+	router := srv.Router()
+
+	// 1. Test GET /swagger/doc.json
+	reqJSON := httptest.NewRequest("GET", "/swagger/doc.json", nil)
+	recJSON := httptest.NewRecorder()
+	router.ServeHTTP(recJSON, reqJSON)
+
+	if recJSON.Code != http.StatusOK {
+		t.Fatalf("GET /swagger/doc.json returned status %d, expected 200", recJSON.Code)
+	}
+	if !strings.Contains(recJSON.Body.String(), `"openapi": "3.0.3"`) {
+		t.Fatalf("GET /swagger/doc.json missing openapi spec version header")
+	}
+
+	// 2. Test GET /swagger UI
+	reqUI := httptest.NewRequest("GET", "/swagger", nil)
+	recUI := httptest.NewRecorder()
+	router.ServeHTTP(recUI, reqUI)
+
+	if recUI.Code != http.StatusOK {
+		t.Fatalf("GET /swagger returned status %d, expected 200", recUI.Code)
+	}
+	if !strings.Contains(recUI.Body.String(), `SwaggerUIBundle`) {
+		t.Fatalf("GET /swagger missing SwaggerUIBundle script")
+	}
+}

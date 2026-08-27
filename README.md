@@ -33,6 +33,17 @@ It is **NOT** intended to be a replacement for heavy enterprise network simulati
 - **Cloud-Init (NoCloud)**: Automatic generation of `cidata.iso` for userdata and metadata cloud-init scripts with `${{{ model.var }}}` template placeholders.
 - **Packet Mirroring (TZSP)**: Per-port UDP TZSP frame forwarding targets.
 - **Full Project Lifecycle**: Multi-lab project switcher with **Rename**, **Import** (`topology.json`), and **Export** features.
+- **Interactive Swagger UI**: Full OpenAPI 3.0 interactive documentation and testing suite served at `/swagger`.
+
+---
+
+## 📖 API Documentation & Swagger UI
+
+`netlabctl` provides a complete REST API and WebSocket interface. Interactive Swagger UI is built directly into the server:
+
+- **Swagger UI Interactive Docs**: `http://localhost:8080/swagger` (or `http://localhost:8080/docs`)
+- **OpenAPI 3.0 JSON Spec**: `http://localhost:8080/swagger/doc.json` (or `/api/docs/openapi.json`)
+- **Markdown API Reference**: See [`docs/API.md`](docs/API.md) for full endpoint schemas and WebSocket protocol specification.
 
 ---
 

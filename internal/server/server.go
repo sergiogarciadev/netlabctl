@@ -77,6 +77,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/ws", s.handleWS)
 	s.mux.HandleFunc("/api/v1/projects/{id}/nodes/{nodeId}/terminal", s.handleNodeTerminal)
 
+	// OpenAPI Spec & Swagger UI Endpoints
+	s.mux.HandleFunc("GET /swagger/doc.json", s.handleSwaggerJSON)
+	s.mux.HandleFunc("GET /api/docs/openapi.json", s.handleSwaggerJSON)
+	s.mux.HandleFunc("GET /swagger", s.handleSwaggerUI)
+	s.mux.HandleFunc("GET /swagger/", s.handleSwaggerUI)
+	s.mux.HandleFunc("GET /docs", s.handleSwaggerUI)
+
 	// Single-binary distribution: Serve embedded client/dist with disk fallback for dev mode
 	var staticFS http.FileSystem
 
