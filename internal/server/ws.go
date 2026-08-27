@@ -253,9 +253,7 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 		c.hub.startProjectSimulation(projectID)
 
 	case model.MsgTypeStopSimulation:
-		var payload struct {
-			ProjectID string `json:"projectId"`
-		}
+		var payload model.StopSimulationPayload
 		_ = json.Unmarshal(msg.Data, &payload)
 		projectID := payload.ProjectID
 		if projectID == "" {
@@ -264,8 +262,8 @@ func (c *Client) handleIncomingMessage(msg model.WSMessage) {
 		if projectID == "" {
 			projectID = "default"
 		}
-		logger.Log.Info("WS Command: Stop simulation", "project", projectID)
-		c.hub.stopProjectSimulation(projectID)
+		logger.Log.Info("WS Command: Stop simulation", "project", projectID, "force", payload.Force)
+		c.hub.stopProjectSimulation(projectID, payload.Force)
 
 	case model.MsgTypeStartNode:
 		var payload model.NodeActionPayload
@@ -587,7 +585,7 @@ func (h *WSHub) handleNodeExit(projectID, nodeID string, exitErr error) {
 					top.Nodes[i].Status = "error"
 					top.Nodes[i].Power = "off"
 					updated = true
-				} else if top.Nodes[i].Status != "stopped" || top.Nodes[i].Power != "off" {
+				} else {
 					top.Nodes[i].Status = "stopped"
 					top.Nodes[i].Power = "off"
 					updated = true
@@ -595,6 +593,23 @@ func (h *WSHub) handleNodeExit(projectID, nodeID string, exitErr error) {
 				break
 			}
 		}
+
+		// Check if any other nodes in the project are still running
+		anyRunning := false
+		for _, n := range top.Nodes {
+			if h.qemuMgr.IsNodeRunning(n.ID) {
+				anyRunning = true
+				break
+			}
+		}
+
+		if !anyRunning && (top.SimulationStatus == "stopping" || top.SimulationStatus == "running") {
+			top.SimulationStatus = "stopped"
+			h.netMgr.StopAllProxies()
+			updated = true
+			h.BroadcastToProject(projectID, "simulation_stopped", map[string]string{"status": "stopped"})
+		}
+
 		if updated {
 			_ = h.storage.SaveProject(top)
 			h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
@@ -608,12 +623,18 @@ func (h *WSHub) handleNodeExit(projectID, nodeID string, exitErr error) {
 	}
 }
 
-func (h *WSHub) stopProjectSimulation(projectID string) {
-	h.qemuMgr.StopAllNodes()
-	h.netMgr.StopAllProxies()
-
+func (h *WSHub) stopProjectSimulation(projectID string, force bool) {
 	top, err := h.storage.GetProject(projectID)
-	if err == nil {
+	if err != nil {
+		top = &model.Topology{ID: projectID}
+	}
+
+	// 1. Force Stop requested OR simulation already in stopping state: Perform HARD STOP immediately
+	if force || top.SimulationStatus == "stopping" {
+		logger.Log.Info("Executing FORCE STOP for project simulation", "projectID", projectID)
+		h.qemuMgr.StopAllNodes()
+		h.netMgr.StopAllProxies()
+
 		top.SimulationStatus = "stopped"
 		for i := range top.Nodes {
 			top.Nodes[i].Status = "stopped"
@@ -621,9 +642,38 @@ func (h *WSHub) stopProjectSimulation(projectID string) {
 		}
 		_ = h.storage.SaveProject(top)
 		h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
+		h.BroadcastToProject(projectID, "simulation_stopped", map[string]string{"status": "stopped"})
+		return
 	}
 
-	h.BroadcastToProject(projectID, "simulation_stopped", map[string]string{"status": "stopped"})
+	// 2. Graceful ACPI Shutdown (First Click): Send system_powerdown via QMP monitor socket to all running nodes
+	hasRunningNodes := false
+	for i := range top.Nodes {
+		nID := top.Nodes[i].ID
+		if h.qemuMgr.IsNodeRunning(nID) {
+			hasRunningNodes = true
+			top.Nodes[i].Status = "stopping"
+			_ = h.qemuMgr.ShutdownNode(projectID, nID)
+		} else {
+			top.Nodes[i].Status = "stopped"
+			top.Nodes[i].Power = "off"
+		}
+	}
+
+	if !hasRunningNodes {
+		h.qemuMgr.StopAllNodes()
+		h.netMgr.StopAllProxies()
+		top.SimulationStatus = "stopped"
+		_ = h.storage.SaveProject(top)
+		h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
+		h.BroadcastToProject(projectID, "simulation_stopped", map[string]string{"status": "stopped"})
+		return
+	}
+
+	top.SimulationStatus = "stopping"
+	_ = h.storage.SaveProject(top)
+	h.BroadcastToProject(projectID, model.MsgTypeProjectState, top)
+	h.BroadcastToProject(projectID, "simulation_stopping", map[string]string{"status": "stopping"})
 }
 
 // SyncTopologyNetworkAndMonitors updates wire bridges and issues QMP monitor set_link carrier state updates.

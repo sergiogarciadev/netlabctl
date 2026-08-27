@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   Cable,
   Copy,
   Download,
@@ -29,6 +30,7 @@ export function Toolbar({
   onExportProject,
   onDeleteProject,
   isRunning,
+  simulationStatus,
   activeTool,
   onSelectTool,
   canUndo,
@@ -214,12 +216,30 @@ export function Toolbar({
       </div>
 
       <div className="toolbar-controls">
-        {!isRunning ? (
+        {simulationStatus === "stopping" ? (
+          <button
+            type="button"
+            className="btn"
+            style={{
+              background: "#dc2626",
+              color: "#ffffff",
+              borderColor: "#b91c1c",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+            onClick={() => onStop && onStop(true)}
+            title="ACPI Shutdown in progress. Click to force stop all machines immediately!"
+          >
+            <AlertTriangle size={16} /> Force Stop
+          </button>
+        ) : !isRunning ? (
           <button type="button" className="btn btn-success" onClick={onStart}>
             <Play size={16} /> Start Lab
           </button>
         ) : (
-          <button type="button" className="btn btn-danger" onClick={onStop}>
+          <button type="button" className="btn btn-danger" onClick={() => onStop && onStop(false)}>
             <Square size={16} /> Stop Lab
           </button>
         )}

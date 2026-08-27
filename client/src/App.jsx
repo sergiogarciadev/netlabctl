@@ -430,15 +430,20 @@ export function App() {
     wsClientRef.current?.startSimulation(projectRef.current.id);
   }, [showError]);
 
-  const handleStopLab = useCallback(async () => {
-    try {
-      await stopProjectSimulation(projectRef.current.id);
-    } catch (err) {
-      console.error("[NETLAB-APP-DEBUG] Failed to stop simulation via REST:", err);
-      showError(err.message || "Failed to stop simulation.");
-    }
-    wsClientRef.current?.stopSimulation(projectRef.current.id);
-  }, [showError]);
+  const handleStopLab = useCallback(
+    async (force = false) => {
+      const isStopping = projectRef.current?.simulationStatus === "stopping";
+      const shouldForce = force || isStopping;
+      try {
+        await stopProjectSimulation(projectRef.current.id, shouldForce);
+      } catch (err) {
+        console.error("[NETLAB-APP-DEBUG] Failed to stop simulation via REST:", err);
+        showError(err.message || "Failed to stop simulation.");
+      }
+      wsClientRef.current?.stopSimulation(projectRef.current.id, shouldForce);
+    },
+    [showError],
+  );
 
   const handleStartNode = useCallback(
     async (nodeId) => {
@@ -756,6 +761,7 @@ export function App() {
         onExportProject={handleExportProject}
         onDeleteProject={handleDeleteProject}
         isRunning={isRunning}
+        simulationStatus={project.simulationStatus}
         activeTool={activeTool}
         onSelectTool={(tool) => {
           console.log("[NETLAB-APP-DEBUG] Tool selected:", tool);

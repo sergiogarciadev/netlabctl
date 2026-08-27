@@ -38,6 +38,12 @@ type SubscribeProjectPayload struct {
 	ProjectID string `json:"projectId"`
 }
 
+// StopSimulationPayload payload for stopping a simulation lab gracefully or forcefully.
+type StopSimulationPayload struct {
+	ProjectID string `json:"projectId,omitempty"`
+	Force     bool   `json:"force,omitempty"`
+}
+
 // NodeActionPayload payload for starting/stopping a node.
 type NodeActionPayload struct {
 	ProjectID string `json:"projectId"`

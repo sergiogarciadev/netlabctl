@@ -143,8 +143,15 @@ export async function startProjectSimulation(projectId, startNodes = true) {
   return res.json();
 }
 
-export async function stopProjectSimulation(projectId) {
-  const res = await fetch(`/api/projects/${projectId}/stop`, { method: "POST" });
+export async function stopProjectSimulation(projectId, force = false) {
+  const url = force
+    ? `/api/projects/${projectId}/stop?force=true`
+    : `/api/projects/${projectId}/stop`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ force }),
+  });
   if (!res.ok) await handleErrorResponse(res, "Failed to stop project simulation");
   return res.json();
 }
@@ -256,8 +263,8 @@ export class WSClient {
     this.send("start_project", { projectId, startNodes });
   }
 
-  stopSimulation(projectId) {
-    this.send("stop_simulation", { projectId });
+  stopSimulation(projectId, force = false) {
+    this.send("stop_simulation", { projectId, force });
   }
 
   startNode(projectId, nodeId) {

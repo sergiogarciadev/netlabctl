@@ -316,8 +316,8 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Stop simulation if running
-	s.hub.stopProjectSimulation(id)
+	// Stop simulation if running (force = true)
+	s.hub.stopProjectSimulation(id, true)
 
 	if err := s.storage.DeleteProject(id); err != nil {
 		logger.Log.Error("Failed to delete project", "id", id, "error", err)
@@ -638,11 +638,20 @@ func (s *Server) handleStopProjectSimulation(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	logger.Log.Info("REST API: Stop project simulation", "id", id)
-	s.hub.stopProjectSimulation(id)
+	force := r.URL.Query().Get("force") == "true"
+	var body struct {
+		Force bool `json:"force"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.Force {
+		force = true
+	}
+
+	logger.Log.Info("REST API: Stop project simulation", "id", id, "force", force)
+	s.hub.stopProjectSimulation(id, force)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "stopped", "projectId": id})
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "stopping", "projectId": id, "force": force})
 }
 
 func getDeviceWidth(node model.Node) float64 {
