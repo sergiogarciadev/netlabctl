@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -593,24 +594,44 @@ func isKVMAvailable() bool {
 	return true
 }
 
+var cloudInitVarRegex = regexp.MustCompile(`\{\{\{\s*([^\}]+?)\s*\}\}\}`)
+
 func renderCloudInitTemplate(tmplStr string, node *model.Node) string {
 	if node == nil {
 		return tmplStr
 	}
-	res := strings.ReplaceAll(tmplStr, "${node.id}", node.ID)
-	res = strings.ReplaceAll(res, "${node.name}", node.Name)
-	res = strings.ReplaceAll(res, "${{{ node.id }}}", node.ID)
-	res = strings.ReplaceAll(res, "${{{ node.name }}}", node.Name)
-	res = strings.ReplaceAll(res, "${node.memory}", fmt.Sprintf("%d", node.Memory))
-	res = strings.ReplaceAll(res, "${node.smp}", fmt.Sprintf("%d", node.SMP))
 
-	for i, p := range node.Ports {
-		res = strings.ReplaceAll(res, fmt.Sprintf("${node.ports[%d].mac}", i), p.MAC)
-		res = strings.ReplaceAll(res, fmt.Sprintf("${node.ports[%d].name}", i), p.Name)
-		res = strings.ReplaceAll(res, fmt.Sprintf("${port%d.mac}", i), p.MAC)
-		res = strings.ReplaceAll(res, fmt.Sprintf("${port%d.name}", i), p.Name)
-	}
-	return res
+	return cloudInitVarRegex.ReplaceAllStringFunc(tmplStr, func(match string) string {
+		submatches := cloudInitVarRegex.FindStringSubmatch(match)
+		if len(submatches) < 2 {
+			return match
+		}
+		varName := strings.TrimSpace(submatches[1])
+
+		switch varName {
+		case "node.id":
+			return node.ID
+		case "node.name":
+			return node.Name
+		case "node.memory":
+			return fmt.Sprintf("%d", node.Memory)
+		case "node.smp":
+			return fmt.Sprintf("%d", node.SMP)
+		}
+
+		if strings.HasPrefix(varName, "port") || strings.HasPrefix(varName, "node.ports[") || strings.HasPrefix(varName, "ports[") {
+			for i, p := range node.Ports {
+				if varName == fmt.Sprintf("port%d.mac", i) || varName == fmt.Sprintf("node.ports[%d].mac", i) || varName == fmt.Sprintf("ports[%d].mac", i) {
+					return p.MAC
+				}
+				if varName == fmt.Sprintf("port%d.name", i) || varName == fmt.Sprintf("node.ports[%d].name", i) || varName == fmt.Sprintf("ports[%d].name", i) {
+					return p.Name
+				}
+			}
+		}
+
+		return match
+	})
 }
 
 func (m *Manager) createCloudInitISO(nDir string, node *model.Node, tmpl *model.MachineTemplate) (string, error) {

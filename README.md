@@ -51,32 +51,35 @@ It is **NOT** intended to be a replacement for heavy enterprise network simulati
 
 `netlabctl` automatically generates a NoCloud Cloud-Init ISO (`cidata.iso`) when `userdata` or `metadata` scripts are specified on device templates or node properties.
 
-The following dynamic placeholders are evaluated and substituted when creating the Cloud-Init ISO:
+To insert dynamic values into your scripts, wrap variable names in triple curly braces `{{{ variable }}}`:
 
 | Placeholder | Description | Example Output |
 | :--- | :--- | :--- |
-| `${node.id}` or `${{{ node.id }}}` | Unique node identifier | `node-1` |
-| `${node.name}` or `${{{ node.name }}}` | Display name of the machine | `Router-A` |
-| `${node.memory}` | Allocated RAM memory in Megabytes | `256` |
-| `${node.smp}` | Allocated vCPU cores | `2` |
-| `${port0.mac}` or `${node.ports[0].mac}` | MAC address of interface port index 0 | `52:54:00:12:34:56` |
-| `${port1.mac}` or `${node.ports[1].mac}` | MAC address of interface port index 1 | `52:54:00:12:34:57` |
-| `${port0.name}` or `${node.ports[0].name}` | Name of interface port index 0 | `eth0` |
+| `{{{ node.id }}}` | Unique node identifier | `node-1` |
+| `{{{ node.name }}}` | Display name of the machine | `Router-A` |
+| `{{{ node.memory }}}` | Allocated RAM memory in Megabytes | `256` |
+| `{{{ node.smp }}}` | Allocated vCPU cores | `2` |
+| `{{{ port0.mac }}}` or `{{{ node.ports[0].mac }}}` | MAC address of interface port index 0 | `52:54:00:12:34:56` |
+| `{{{ port1.mac }}}` or `{{{ node.ports[1].mac }}}` | MAC address of interface port index 1 | `52:54:00:12:34:57` |
+| `{{{ port0.name }}}` or `{{{ node.ports[0].name }}}` | Name of interface port index 0 | `eth0` |
+
+> [!NOTE]  
+> Placeholders MUST use triple curly braces `{{{ ... }}}`. Dollar signs (`$`) and single brackets (`{ ... }`) are not used as variable delimiters.
 
 ### Cloud-Init Userdata Example
 
 ```yaml
 #cloud-config
-hostname: ${node.name}
-fqdn: ${node.name}.local
+hostname: {{{ node.name }}}
+fqdn: {{{ node.name }}}.local
 manage_etc_hosts: true
 users:
   - name: netlab
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
 runcmd:
-  - echo "Configuring ${node.name} (${node.id})"
-  - ip link set eth0 address ${port0.mac}
+  - echo "Configuring {{{ node.name }}} ({{{ node.id }}})"
+  - ip link set eth0 address {{{ port0.mac }}}
 ```
 
 ---

@@ -82,10 +82,10 @@ func TestRenderCloudInitTemplate(t *testing.T) {
 		},
 	}
 
-	tmpl := "hostname: ${node.name}\nid: ${node.id}\nmac: ${port0.mac}\nmac1: ${node.ports[1].mac}\nmem: ${node.memory}MB\nsmp: ${node.smp}"
+	tmpl := "hostname: {{{ node.name }}}\nid: {{{node.id}}}\nmac: {{{ port0.mac }}}\nmac1: {{{ node.ports[1].mac }}}\nmem: {{{ node.memory }}}MB\nsmp: {{{ node.smp }}}\nignored: ${node.name} and {node.id}"
 	rendered := renderCloudInitTemplate(tmpl, node)
 
-	expected := "hostname: Core-Router\nid: router-1\nmac: 52:54:00:12:34:56\nmac1: 52:54:00:12:34:57\nmem: 256MB\nsmp: 2"
+	expected := "hostname: Core-Router\nid: router-1\nmac: 52:54:00:12:34:56\nmac1: 52:54:00:12:34:57\nmem: 256MB\nsmp: 2\nignored: ${node.name} and {node.id}"
 	if rendered != expected {
 		t.Fatalf("renderCloudInitTemplate mismatch.\nExpected:\n%s\nGot:\n%s", expected, rendered)
 	}
