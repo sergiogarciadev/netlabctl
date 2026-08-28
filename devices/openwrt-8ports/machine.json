@@ -1,0 +1,63 @@
+{
+  "id": "openwrt-8ports",
+  "name": "OpenWRT (8 ports)",
+  "description": "OpenWRT router with 8 ports",
+  "group": "OpenWRT",
+  "image": "openwrt-25.12.5-x86-64-generic-squashfs-combined.qcow2",
+  "drawing": "drawing.svg",
+  "system": "qemu-system-x86_64",
+  "memory": 128,
+  "smp": 1,
+  "ports": [
+    {
+      "id": "device-port-1",
+      "name": "ether-1",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-2",
+      "name": "ether-2",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-3",
+      "name": "ether-3",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-4",
+      "name": "ether-4",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-5",
+      "name": "ether-5",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-6",
+      "name": "ether-6",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-7",
+      "name": "ether-7",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-8",
+      "name": "ether-8",
+      "device": "virtio-net-pci"
+    }
+  ],
+  "status": [
+    {
+      "id": "device-name",
+      "name": "name"
+    },
+    {
+      "id": "device-power",
+      "name": "power"
+    }
+  ]
+}
