@@ -1,0 +1,43 @@
+{
+  "id": "opnsense-4ports",
+  "name": "OPNsense (4 ports)",
+  "description": "OPNsense with 4 ports",
+  "group": "OPNsense",
+  "image": "OPNsense-26.7-nano-amd64.qcow2",
+  "drawing": "drawing.svg",
+  "system": "qemu-system-x86_64",
+  "memory": 1024,
+  "smp": 1,
+  "ports": [
+    {
+      "id": "device-port-1",
+      "name": "vtnet0",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-2",
+      "name": "vtnet1",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-3",
+      "name": "vtnet2",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-4",
+      "name": "vtnet3",
+      "device": "virtio-net-pci"
+    }
+  ],
+  "status": [
+    {
+      "id": "device-name",
+      "name": "name"
+    },
+    {
+      "id": "device-power",
+      "name": "power"
+    }
+  ]
+}

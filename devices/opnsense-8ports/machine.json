@@ -1,0 +1,63 @@
+{
+  "id": "opnsense-8ports",
+  "name": "OPNsense (8 ports)",
+  "description": "OPNsense with 8 ports",
+  "group": "OPNsense",
+  "image": "OPNsense-26.7-nano-amd64.qcow2",
+  "drawing": "drawing.svg",
+  "system": "qemu-system-x86_64",
+  "memory": 2048,
+  "smp": 1,
+  "ports": [
+    {
+      "id": "device-port-1",
+      "name": "vtnet0",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-2",
+      "name": "vtnet1",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-3",
+      "name": "vtnet2",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-4",
+      "name": "vtnet3",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-5",
+      "name": "vtnet4",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-6",
+      "name": "vtnet5",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-7",
+      "name": "vtnet6",
+      "device": "virtio-net-pci"
+    },
+    {
+      "id": "device-port-8",
+      "name": "vtnet7",
+      "device": "virtio-net-pci"
+    }
+  ],
+  "status": [
+    {
+      "id": "device-name",
+      "name": "name"
+    },
+    {
+      "id": "device-power",
+      "name": "power"
+    }
+  ]
+}
