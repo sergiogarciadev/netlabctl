@@ -32,7 +32,7 @@ It is **NOT** intended to be a replacement for heavy enterprise network simulati
 - **Embedded Device Templates**: Pre-packaged templates embedded directly inside the binary (MikroTik 4/8/16/32/64-port, Debian 13, etc.) with automatic template tab grouping in the *Add Device* modal.
 - **Dedicated Disk Storage**: Centralized image directory at `~/.netlabctl/images/` with visual disabled opacity filters and warnings for missing disk images.
 - **Real-Time Serial Console**: Web-based `xterm.js` terminal over WebSockets with automatic standby polling and reconnect telemetry when VMs boot up.
-- **Cloud-Init (NoCloud)**: Automatic generation of `cidata.iso` for userdata and metadata cloud-init scripts with `${{{ model.var }}}` template placeholders.
+- **Cloud-Init (NoCloud)**: Automatic generation of `cidata.iso` for userdata and metadata cloud-init scripts with `{{{ node.var }}}` template placeholders.
 - **Packet Mirroring (TZSP)**: Per-port UDP TZSP frame forwarding targets.
 - **Full Project Lifecycle**: Multi-lab project switcher with **Rename**, **Import** (`topology.json`), and **Export** features.
 - **Interactive Swagger UI**: Full OpenAPI 3.0 interactive documentation and testing suite served at `/swagger`.

@@ -43,7 +43,7 @@
 - **Sidebar Warning Banner**: The Machine Properties sidebar displays a prominent red warning banner when the selected node's template is missing its disk image.
 - **Add Device Modal Group Tabs**: Templates support optional `group` properties (e.g. `"MikroTik"`, `"Cisco"`). Ungrouped templates fall under an `"Other"` tab. Cards for templates missing disk images display a red warning banner.
 - **System Specifications**: Memory (RAM) and vCPU (SMP) are stored per node on `model.Node` and are editable. Default values inherit from device template `machine.json`.
-- **Scripts**: Userdata and metadata cloud-init script templates support `${{{ model.var }}}` placeholders.
+- **Scripts**: Userdata and metadata cloud-init script templates support `{{{ node.var }}}` placeholders.
 - **Per-Port Connection Status & TZSP Forwarding**: Each port item card displays live connection status (`Connected → TargetDevice (targetPort)` vs `Disconnected`) and has its own dedicated **Forward Frames (TZSP)** UDP mirroring target button.
 
 ---

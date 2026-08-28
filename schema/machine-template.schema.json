@@ -51,11 +51,11 @@
     },
     "userdata": {
       "type": "string",
-      "description": "Optional userdata script template using ${{{ model.var }}} substitution"
+      "description": "Optional userdata script template using {{{ node.var }}} substitution"
     },
     "metadata": {
       "type": "string",
-      "description": "Optional metadata script template using ${{{ model.var }}} substitution"
+      "description": "Optional metadata script template using {{{ node.var }}} substitution"
     },
     "ports": {
       "type": "array",
