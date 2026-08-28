@@ -11,22 +11,22 @@
   "ports": [
     {
       "id": "device-port-1",
-      "name": "ether-1",
+      "name": "eth0",
       "device": "virtio-net-pci"
     },
     {
       "id": "device-port-2",
-      "name": "ether-2",
+      "name": "eth1",
       "device": "virtio-net-pci"
     },
     {
       "id": "device-port-3",
-      "name": "ether-3",
+      "name": "eth2",
       "device": "virtio-net-pci"
     },
     {
       "id": "device-port-4",
-      "name": "ether-4",
+      "name": "eth3",
       "device": "virtio-net-pci"
     }
   ],

@@ -11,42 +11,42 @@
   "ports": [
     {
       "id": "device-port-1",
-      "name": "ether-1",
+      "name": "eth0",
       "device": "virtio-net-pci"
     },
     {
       "id": "device-port-2",
-      "name": "ether-2",
+      "name": "eth1",
       "device": "virtio-net-pci"
     },
     {
       "id": "device-port-3",
-      "name": "ether-3",
+      "name": "eth2",
       "device": "virtio-net-pci"
     },
     {
       "id": "device-port-4",
-      "name": "ether-4",
+      "name": "eth3",
       "device": "virtio-net-pci"
     },
     {
       "id": "device-port-5",
-      "name": "ether-5",
+      "name": "eth4",
       "device": "virtio-net-pci"
     },
     {
       "id": "device-port-6",
-      "name": "ether-6",
+      "name": "eth5",
       "device": "virtio-net-pci"
     },
     {
       "id": "device-port-7",
-      "name": "ether-7",
+      "name": "eth6",
       "device": "virtio-net-pci"
     },
     {
       "id": "device-port-8",
-      "name": "ether-8",
+      "name": "eth7",
       "device": "virtio-net-pci"
     }
   ],
