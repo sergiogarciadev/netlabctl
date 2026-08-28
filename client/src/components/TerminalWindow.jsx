@@ -230,12 +230,6 @@ export function TerminalWindow({
     let socket = null;
     let reconnectTimeout = null;
 
-    const sendSizeReport = (rows, cols) => {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(`\x1b[8;${rows};${cols}t`);
-      }
-    };
-
     const connectWebSocket = () => {
       if (isDisposed || socket) return;
       if (!isNodeRunningRef.current) {
@@ -264,7 +258,6 @@ export function TerminalWindow({
         console.log(`[TERMINAL] WS connection established for node ${nodeId}`);
         term.write("\r\n\x1b[32mConnected to serial console.\x1b[0m\r\n");
         setTermDimensions({ rows: term.rows, cols: term.cols });
-        sendSizeReport(term.rows, term.cols);
       };
 
       socket.onmessage = (event) => {
@@ -337,7 +330,6 @@ export function TerminalWindow({
 
     term.onResize(({ cols, rows }) => {
       setTermDimensions({ rows, cols });
-      sendSizeReport(rows, cols);
     });
 
     // Safely absorb Cursor Position Reports (CSI row;col R) echoed back by serial drivers so ^[[39;1R is never printed
@@ -349,15 +341,8 @@ export function TerminalWindow({
     // Safely absorb Device Attributes queries (CSI c / CSI 0c / CSI >0c)
     term.parser.registerCsiHandler({ final: "c" }, () => true);
 
-    // Register CSI window report handler safely (checking params.getItem or array indexing)
-    term.parser.registerCsiHandler({ final: "t" }, (params) => {
-      const p0 = params.getItem ? params.getItem(0) : Array.isArray(params) ? params[0] : 0;
-      if (p0 === 18) {
-        sendSizeReport(term.rows, term.cols);
-        return true;
-      }
-      return true;
-    });
+    // Safely absorb CSI window report/manipulation queries (CSI t) silently without sending ANSI codes over serial
+    term.parser.registerCsiHandler({ final: "t" }, () => true);
 
     // Safely absorb unhandled Operating System Commands (OSC 0, 1, 2, 4, 10, 11, 12, 52, 104, 110, 111, 112, 133, 1337)
     const oscIds = [0, 1, 2, 4, 10, 11, 12, 52, 104, 110, 111, 112, 133, 1337];
