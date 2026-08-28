@@ -1,0 +1,29 @@
+{
+  "id": "alpine-1port",
+  "name": "Alpine (1 port)",
+  "description": "Alpine with 1 port",
+  "group": "Linux",
+  "image": "generic_alpine-3.24.1-x86_64-bios-cloudinit-r0.qcow2",
+  "drawing": "drawing.svg",
+  "system": "qemu-system-x86_64",
+  "memory": 128,
+  "smp": 2,
+  "userdata": "#cloud-config\nchpasswd:\n  list: |\n     root:insecure\n  expire: False",
+  "ports": [
+    {
+      "id": "device-port-1",
+      "name": "eth0",
+      "device": "virtio-net-pci"
+    }
+  ],
+  "status": [
+    {
+      "id": "device-name",
+      "type": "name"
+    },
+    {
+      "id": "device-power",
+      "type": "power"
+    }
+  ]
+}
