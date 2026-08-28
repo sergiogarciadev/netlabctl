@@ -3,7 +3,7 @@
   "name": "Debian 13 (1 port)",
   "description": "Debian 13 with 1 port",
   "group": "Linux",
-  "image": "debian-13-generic-cloud-amd64.qcow2",
+  "image": "debian-13-genericcloud-amd64.qcow2",
   "drawing": "drawing.svg",
   "system": "qemu-system-x86_64",
   "memory": 256,
